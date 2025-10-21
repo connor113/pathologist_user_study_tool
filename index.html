@@ -1,0 +1,277 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>WSI Viewer - Pathologist Study</title>
+  <style>
+    body {
+      margin: 0;
+      padding: 0;
+      font-family: Arial, sans-serif;
+      overflow: hidden;
+    }
+    #viewer {
+      width: 100vw;
+      height: 100vh;
+      background: #000;
+    }
+    /* Debug info panel */
+    #debug-info-panel {
+      position: absolute;
+      top: 20px;
+      left: 20px;
+      background: rgba(255, 255, 255, 0.9);
+      padding: 15px;
+      border-radius: 8px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+      z-index: 1000;
+    }
+    
+    /* Arrow buttons at screen edges */
+    .arrow-btn {
+      position: absolute;
+      width: 50px;
+      height: 50px;
+      font-size: 24px;
+      cursor: pointer;
+      border: 2px solid rgba(255, 255, 255, 0.8);
+      background: rgba(0, 0, 0, 0.5);
+      color: white;
+      border-radius: 8px;
+      z-index: 900;
+      transition: all 0.2s ease;
+    }
+    
+    .arrow-btn:hover:not(:disabled) {
+      background: rgba(0, 0, 0, 0.7);
+      border-color: rgba(255, 255, 255, 1);
+      transform: scale(1.1);
+    }
+    
+    .arrow-btn:disabled {
+      opacity: 0.3;
+      cursor: not-allowed;
+      background: rgba(100, 100, 100, 0.3);
+    }
+    
+    /* Position each arrow at screen edges */
+    #btn-up {
+      top: 20px;
+      left: 50%;
+      transform: translateX(-50%);
+    }
+    
+    #btn-down {
+      bottom: 20px;
+      left: 50%;
+      transform: translateX(-50%);
+    }
+    
+    #btn-left {
+      left: 20px;
+      top: 50%;
+      transform: translateY(-50%);
+    }
+    
+    #btn-right {
+      right: 20px;
+      top: 50%;
+      transform: translateY(-50%);
+    }
+    
+    #btn-up:hover:not(:disabled),
+    #btn-down:hover:not(:disabled) {
+      transform: translateX(-50%) scale(1.1);
+    }
+    
+    #btn-left:hover:not(:disabled),
+    #btn-right:hover:not(:disabled) {
+      transform: translateY(-50%) scale(1.1);
+    }
+    #debug-info {
+      font-size: 12px;
+      font-family: monospace;
+      color: #333;
+      line-height: 1.6;
+    }
+    #debug-info strong {
+      color: #000;
+    }
+    
+    /* Cell index hover overlay */
+    #cell-overlay {
+      position: absolute;
+      background: rgba(0, 0, 0, 0.85);
+      color: #fff;
+      padding: 8px 12px;
+      border-radius: 6px;
+      font-family: monospace;
+      font-size: 13px;
+      pointer-events: none;
+      z-index: 1100;
+      display: none;
+      white-space: nowrap;
+    }
+    
+    #cell-overlay.visible {
+      display: block;
+    }
+    
+    /* Back and Reset buttons */
+    .nav-btn {
+      position: absolute;
+      bottom: 20px;
+      padding: 12px 24px;
+      font-size: 14px;
+      cursor: pointer;
+      border: 2px solid rgba(255, 255, 255, 0.8);
+      background: rgba(0, 0, 0, 0.7);
+      color: white;
+      border-radius: 8px;
+      z-index: 900;
+      transition: all 0.2s ease;
+      font-family: Arial, sans-serif;
+      font-weight: bold;
+    }
+    
+    .nav-btn:hover:not(:disabled) {
+      background: rgba(0, 0, 0, 0.9);
+      border-color: rgba(255, 255, 255, 1);
+      transform: translateY(-2px);
+      box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
+    }
+    
+    .nav-btn:disabled {
+      opacity: 0.3;
+      cursor: not-allowed;
+      background: rgba(100, 100, 100, 0.3);
+    }
+    
+    #btn-back {
+      right: 180px;
+    }
+    
+    #btn-reset {
+      right: 20px;
+    }
+    
+    #btn-export {
+      left: 20px;
+    }
+    
+    /* Label selection sidebar */
+    #label-sidebar {
+      position: absolute;
+      top: 50%;
+      right: 20px;
+      transform: translateY(-50%);
+      background: rgba(255, 255, 255, 0.95);
+      padding: 20px;
+      border-radius: 12px;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+      z-index: 1000;
+      min-width: 180px;
+    }
+    
+    #label-sidebar h3 {
+      margin: 0 0 15px 0;
+      font-size: 16px;
+      font-weight: bold;
+      color: #333;
+      border-bottom: 2px solid #ddd;
+      padding-bottom: 8px;
+    }
+    
+    .label-option {
+      display: block;
+      margin: 10px 0;
+      cursor: pointer;
+      user-select: none;
+    }
+    
+    .label-option input[type="radio"] {
+      margin-right: 8px;
+      cursor: pointer;
+    }
+    
+    .label-option label {
+      cursor: pointer;
+      font-size: 14px;
+      color: #333;
+    }
+    
+    #btn-confirm {
+      width: 100%;
+      margin-top: 20px;
+      padding: 12px;
+      background: #007bff;
+      color: white;
+      border: none;
+      border-radius: 6px;
+      font-size: 14px;
+      font-weight: bold;
+      cursor: pointer;
+      transition: background 0.2s ease;
+    }
+    
+    #btn-confirm:hover {
+      background: #0056b3;
+    }
+    
+    #btn-confirm:active {
+      background: #004494;
+    }
+  </style>
+</head>
+<body>
+  <div id="viewer"></div>
+  
+  <!-- Arrow buttons at screen edges -->
+  <button id="btn-up" class="arrow-btn" disabled title="Pan Up (W / ↑)">↑</button>
+  <button id="btn-down" class="arrow-btn" disabled title="Pan Down (S / ↓)">↓</button>
+  <button id="btn-left" class="arrow-btn" disabled title="Pan Left (A / ←)">←</button>
+  <button id="btn-right" class="arrow-btn" disabled title="Pan Right (D / →)">→</button>
+  
+  <!-- Back and Reset buttons -->
+  <button id="btn-back" class="nav-btn" disabled title="Go back one zoom step">← Back</button>
+  <button id="btn-reset" class="nav-btn" title="Reset to start view">↺ Reset</button>
+  
+  <!-- Export CSV button -->
+  <button id="btn-export" class="nav-btn" title="Export session log as CSV">💾 Export CSV</button>
+  
+  <!-- Debug info panel -->
+  <div id="debug-info-panel">
+    <div id="debug-info">
+      <div><strong>Zoom:</strong> <span id="current-zoom">Loading...</span></div>
+      <div><strong>Fits at 5×:</strong> <span id="fit-status">?</span></div>
+      <div><strong>Start level:</strong> <span id="start-level">?</span></div>
+      <div><strong>Grid:</strong> <span id="grid-dims">?</span></div>
+    </div>
+  </div>
+  
+  <!-- Cell index overlay (follows cursor) -->
+  <div id="cell-overlay"></div>
+  
+  <!-- Label selection sidebar -->
+  <div id="label-sidebar">
+    <h3>Diagnosis</h3>
+    <div class="label-option">
+      <input type="radio" id="label-normal" name="diagnosis" value="normal">
+      <label for="label-normal">Normal</label>
+    </div>
+    <div class="label-option">
+      <input type="radio" id="label-benign" name="diagnosis" value="benign">
+      <label for="label-benign">Benign lesion</label>
+    </div>
+    <div class="label-option">
+      <input type="radio" id="label-malignant" name="diagnosis" value="malignant">
+      <label for="label-malignant">Malignant</label>
+    </div>
+    <button id="btn-confirm">Confirm & Next</button>
+  </div>
+  
+  <script type="module" src="/src/viewer/main.ts"></script>
+</body>
+</html>
+

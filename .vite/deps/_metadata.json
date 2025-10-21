@@ -1,0 +1,15 @@
+{
+  "hash": "545a5e6c",
+  "configHash": "5d556406",
+  "lockfileHash": "d22228f1",
+  "browserHash": "c7938edf",
+  "optimized": {
+    "openseadragon": {
+      "src": "../../node_modules/openseadragon/build/openseadragon/openseadragon.js",
+      "file": "openseadragon.js",
+      "fileHash": "5228010f",
+      "needsInterop": true
+    }
+  },
+  "chunks": {}
+}

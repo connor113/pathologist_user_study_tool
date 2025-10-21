@@ -1,0 +1,42 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+*.log
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Env
+.env
+.env.local
+
+# Runtime
+journal/
+logs/
+project_state/
+tasks/
+slides/
+tiles/
+
+# Backend (V2)
+backend/.env
+backend/dist/
+backend/node_modules/
+
+# Scripts
+scripts/.env
