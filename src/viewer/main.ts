@@ -78,6 +78,7 @@ function logEvent(
     slide_id: manifest.slide_id,
     event: eventType,
     zoom_level: gridState.currentZoomMag,
+    dzi_level: gridState.currentDziLevel,
     i: options.cellI ?? null,
     j: options.cellJ ?? null,
     center_x0: center.x,
@@ -114,7 +115,7 @@ function exportCSV() {
     return;
   }
   
-  // CSV header row (matches spec schema)
+  // CSV header row (matches spec schema + dzi_level)
   const headers = [
     'ts_iso8601',
     'session_id',
@@ -122,6 +123,7 @@ function exportCSV() {
     'slide_id',
     'event',
     'zoom_level',
+    'dzi_level',
     'i',
     'j',
     'center_x0',
@@ -148,6 +150,7 @@ function exportCSV() {
     event.slide_id,
     event.event,
     event.zoom_level,
+    event.dzi_level,
     event.i ?? '',
     event.j ?? '',
     event.center_x0.toFixed(2),
@@ -193,87 +196,91 @@ function exportCSV() {
   console.log('==================');
 }
 
-// ===== MAGNIFICATION ↔ OSD ZOOM MAPPING =====
+// ===== MAGNIFICATION ↔ DZI LEVEL MAPPING =====
 /**
- * Convert magnification level to OpenSeadragon zoom value.
- * 
- * OSD zoom relates to how many screen pixels represent one image pixel.
- * For our zoom ladder: 2.5×, 5×, 10×, 20×, 40×
- * 
- * The relationship is: zoom = mag / 40 * imageWidth / containerWidth
- * But we simplify using the fact that at home zoom (fitting entire image),
- * zoom = 1.0, and we scale from there based on magnification.
+ * Get OpenSeadragon zoom value for a specific DZI level.
+ * This uses the exact DZI level from the manifest to ensure proper alignment
+ * with the patch extraction at that magnification.
  */
-function getZoomForMagnification(mag: number, viewer: OpenSeadragon.Viewer): number {
-  // Get the zoom level that would show the entire image (home zoom)
+function getZoomForDziLevel(dziLevel: number, viewer: OpenSeadragon.Viewer): number {
+  // OpenSeadragon calculates zoom based on the full-resolution image dimensions
+  // and the current viewport size. For a specific DZI level, we need to calculate
+  // the zoom that would display that level at 1:1 pixel ratio
+  
   const homeZoom = viewer.viewport.getHomeZoom();
+  const maxLevel = viewer.world.getItemAt(0).source.maxLevel;
   
-  // At 40× magnification, we're at native resolution
-  // At lower magnifications, we're zoomed out by the ratio
-  // Since home zoom fits the entire image, and our base is 40×,
-  // we need to scale relative to what magnification "home" represents
+  // Each DZI level is 2× the previous level
+  // At maxLevel: we're at full resolution (downsample = 1)
+  // At maxLevel-1: downsample = 2
+  // At maxLevel-2: downsample = 4
+  // etc.
   
-  // The slide's native resolution is 40×
-  // Home zoom shows the entire slide, which at our smallest container
-  // dimension determines the initial zoom factor
-  // 
-  // For discrete levels, we calculate zoom as: homeZoom * (mag / magAtHome)
-  // where magAtHome is the magnification level that fits the entire image
+  const levelDiff = maxLevel - dziLevel;
+  const downsample = Math.pow(2, levelDiff);
   
-  // Simple approach: relative to home zoom
-  // Assume home = ~2.5× for large slides, ~5× for smaller ones
-  // But we want absolute control, so:
-  // At mag 2.5×: zoom should show entire image (approximately homeZoom)
-  // At mag 5×:   zoom = homeZoom * 2
-  // At mag 10×:  zoom = homeZoom * 4
-  // At mag 20×:  zoom = homeZoom * 8
-  // At mag 40×:  zoom = homeZoom * 16
+  // Zoom is inversely proportional to downsample
+  // At max level (downsample=1): zoom = maxZoom
+  // At lower levels: zoom = maxZoom / downsample
   
-  const zoomMultiplier = mag / 2.5;
-  return homeZoom * zoomMultiplier;
+  const maxZoom = viewer.viewport.getMaxZoom();
+  return maxZoom / downsample;
 }
 
 /**
- * Map OpenSeadragon zoom level to magnification (2.5×, 5×, 10×, 20×, 20×, 40×)
- * Finds the closest magnification level to current zoom.
+ * Get magnification and DZI level for current zoom state.
+ * Returns the closest magnification level from our ladder (2.5×, 5×, 10×, 20×, 40×).
+ * If zoom is close to home zoom, returns null (indicating "fit" state).
  */
-function getCurrentMagnification(viewer: OpenSeadragon.Viewer, _manifest: SlideManifest): number {
+function getCurrentMagnificationAndLevel(viewer: OpenSeadragon.Viewer, manifest: SlideManifest): { mag: number, dziLevel: number } | null {
   const currentZoom = viewer.viewport.getZoom(true);
   const homeZoom = viewer.viewport.getHomeZoom();
   
-  // Calculate which magnification level we're closest to
-  const magnifications = [2.5, 5, 10, 20, 40];
-  const multiplier = currentZoom / homeZoom;
-  
-  // Map multiplier to magnification (multiplier = mag / 2.5)
-  const estimatedMag = multiplier * 2.5;
-  
-  // Find closest discrete magnification level
-  let closestMag = magnifications[0];
-  let minDiff = Math.abs(estimatedMag - closestMag);
-  
-  for (const mag of magnifications) {
-    const diff = Math.abs(estimatedMag - mag);
-    if (diff < minDiff) {
-      minDiff = diff;
-      closestMag = mag;
-    }
+  // If we're very close to home zoom, we're in "fit entire slide" mode
+  // Threshold: within 10% of home zoom
+  if (Math.abs(currentZoom - homeZoom) / homeZoom < 0.1) {
+    return null; // Indicates "fit" state
   }
   
-  return closestMag;
+  // Get zoom values for each magnification level
+  const mag2_5Zoom = getZoomForDziLevel(manifest.magnification_levels['2.5x'], viewer);
+  const mag5Zoom = getZoomForDziLevel(manifest.magnification_levels['5x'], viewer);
+  const mag10Zoom = getZoomForDziLevel(manifest.magnification_levels['10x'], viewer);
+  const mag20Zoom = getZoomForDziLevel(manifest.magnification_levels['20x'], viewer);
+  const mag40Zoom = getZoomForDziLevel(manifest.magnification_levels['40x'], viewer);
+  
+  // Find closest magnification
+  const diffs = [
+    { mag: 2.5, dziLevel: manifest.magnification_levels['2.5x'], diff: Math.abs(currentZoom - mag2_5Zoom) },
+    { mag: 5, dziLevel: manifest.magnification_levels['5x'], diff: Math.abs(currentZoom - mag5Zoom) },
+    { mag: 10, dziLevel: manifest.magnification_levels['10x'], diff: Math.abs(currentZoom - mag10Zoom) },
+    { mag: 20, dziLevel: manifest.magnification_levels['20x'], diff: Math.abs(currentZoom - mag20Zoom) },
+    { mag: 40, dziLevel: manifest.magnification_levels['40x'], diff: Math.abs(currentZoom - mag40Zoom) }
+  ];
+  
+  diffs.sort((a, b) => a.diff - b.diff);
+  
+  return { mag: diffs[0].mag, dziLevel: diffs[0].dziLevel };
 }
 
 // ===== UPDATE GRID STATE =====
 function updateGridState(viewer: OpenSeadragon.Viewer) {
   if (!manifest) return;
   
-  const currentZoomMag = getCurrentMagnification(viewer, manifest);
-  const cellSize = cellSizeForZoom(manifest.patch_px, currentZoomMag);
+  const magInfo = getCurrentMagnificationAndLevel(viewer, manifest);
+  
+  // If we're in "fit" mode (null), use 2.5× as reference for grid calculations
+  // This represents the first click level
+  const mag = magInfo ? magInfo.mag : 2.5;
+  const dziLevel = magInfo ? magInfo.dziLevel : manifest.magnification_levels['2.5x'];
+  
+  const cellSize = cellSizeForZoom(manifest.patch_px, mag);
   const [numCols, numRows] = gridDimensions(manifest.level0_width, manifest.level0_height, cellSize);
   
   gridState = {
     manifest,
-    currentZoomMag,
+    currentZoomMag: mag,
+    currentDziLevel: dziLevel,
     cellSize,
     numCols,
     numRows
@@ -312,18 +319,32 @@ function updateDebugUI() {
 
 // ===== ZOOM LADDER NAVIGATION =====
 /**
- * Get the next zoom level in the ladder: 2.5 → 5 → 10 → 20 → 40
+ * Get the next zoom level in the ladder: fit → 2.5× → 5× → 10× → 20× → 40×
  * Returns null if already at max zoom (40×).
  */
-function getNextZoomLevel(currentZoom: number): number | null {
-  const ladder = [2.5, 5, 10, 20, 40];
-  const currentIndex = ladder.indexOf(currentZoom);
+function getNextZoomLevel(currentZoom: number | null): number | null {
+  // Ladder: fit → 2.5× → 5× → 10× → 20× → 40×
+  if (currentZoom === null) return 2.5;  // From fit → 2.5×
+  if (currentZoom === 2.5) return 5;     // 2.5× → 5×
+  if (currentZoom === 5) return 10;      // 5× → 10×
+  if (currentZoom === 10) return 20;     // 10× → 20×
+  if (currentZoom === 20) return 40;     // 20× → 40×
   
-  if (currentIndex === -1 || currentIndex === ladder.length - 1) {
-    return null; // Already at max or invalid zoom
-  }
+  return null; // Already at 40×
+}
+
+/**
+ * Get the previous zoom level (for zooming out).
+ * Returns null for "fit" mode (home zoom).
+ */
+function getPreviousZoomLevel(currentZoom: number): number | null {
+  if (currentZoom === 40) return 20;     // 40× → 20×
+  if (currentZoom === 20) return 10;     // 20× → 10×
+  if (currentZoom === 10) return 5;      // 10× → 5×
+  if (currentZoom === 5) return 2.5;     // 5× → 2.5×
+  if (currentZoom === 2.5) return null;  // 2.5× → fit
   
-  return ladder[currentIndex + 1];
+  return null; // Already at fit
 }
 
 /**
@@ -358,6 +379,8 @@ function pushHistory() {
  * Go back one step in zoom history.
  */
 function goBack() {
+  if (!manifest) return;
+  
   if (zoomHistory.length === 0) {
     console.log('No history to go back to');
     return;
@@ -368,23 +391,41 @@ function goBack() {
   console.log('=== GO BACK ===');
   console.log(`Restoring: ${previousState.zoomMag}× at (${previousState.centerX.toFixed(0)}, ${previousState.centerY.toFixed(0)})`);
   
-  // Restore zoom level
-  const zoomValue = getZoomForMagnification(previousState.zoomMag, viewer);
-  viewer.viewport.zoomTo(zoomValue, undefined, true);
+  // Check if this is the start state (fit mode)
+  if (previousState.zoomMag === startState.zoomMag && 
+      Math.abs(previousState.centerX - startState.centerX) < 100 && 
+      Math.abs(previousState.centerY - startState.centerY) < 100) {
+    // Go to fit mode
+    viewer.viewport.goHome(true);
+    console.log('Restored to fit mode (start state)');
+  } else {
+    // Restore to specific zoom level using DZI level
+    const dziLevel = manifest.magnification_levels[`${previousState.zoomMag}x` as '2.5x' | '5x' | '10x' | '20x' | '40x'];
+    const zoomValue = getZoomForDziLevel(dziLevel, viewer);
+    viewer.viewport.zoomTo(zoomValue, undefined, true);
+    
+    // Restore center
+    const centerViewport = viewer.viewport.imageToViewportCoordinates(previousState.centerX, previousState.centerY);
+    viewer.viewport.panTo(centerViewport, true);
+    
+    console.log(`Restored to ${previousState.zoomMag}× (DZI ${dziLevel})`);
+  }
   
-  // Restore center
-  const centerViewport = viewer.viewport.imageToViewportCoordinates(previousState.centerX, previousState.centerY);
-  viewer.viewport.panTo(centerViewport, true);
+  // Force grid state update after going back (fixes cursor state issue)
+  setTimeout(() => {
+    updateGridState(viewer);
+    updateBackButton();
+  }, 100);
   
-  updateBackButton();
   console.log('===============');
   
   // Log back_step event
-  setTimeout(() => logEvent('back_step'), 50);
+  setTimeout(() => logEvent('back_step'), 150);
 }
 
 /**
- * Reset to initial zoom and center (start state).
+ * Reset to initial view: fit entire slide on screen.
+ * Clears zoom history.
  */
 function resetView() {
   if (!startState) {
@@ -393,23 +434,26 @@ function resetView() {
   }
   
   console.log('=== RESET ===');
-  console.log(`Resetting to: ${startState.zoomMag}× at (${startState.centerX.toFixed(0)}, ${startState.centerY.toFixed(0)})`);
+  console.log(`Resetting to start state: fit entire slide`);
   
-  // Clear history
+  // Clear zoom history
   zoomHistory = [];
   
-  // Restore start state
-  const zoomValue = getZoomForMagnification(startState.zoomMag, viewer);
-  viewer.viewport.zoomTo(zoomValue, undefined, true);
+  // Go to fit mode (home zoom) - shows entire slide
+  viewer.viewport.goHome(true);
   
-  const centerViewport = viewer.viewport.imageToViewportCoordinates(startState.centerX, startState.centerY);
-  viewer.viewport.panTo(centerViewport, true);
+  console.log('Reset to fit mode');
   
-  updateBackButton();
+  // Force grid state update after reset (fixes cursor state issue)
+  setTimeout(() => {
+    updateGridState(viewer);
+    updateBackButton();
+  }, 100);
+  
   console.log('=============');
   
   // Log reset event
-  setTimeout(() => logEvent('reset'), 50);
+  setTimeout(() => logEvent('reset'), 150);
 }
 
 /**
@@ -515,7 +559,7 @@ function panByArrow(direction: 'up' | 'down' | 'left' | 'right') {
   
   // Convert back to viewport coordinates and pan
   const newCenterViewport = viewport.imageToViewportCoordinates(newCenterX, newCenterY);
-  viewport.panTo(newCenterViewport, true); // immediate pan, no animation
+  viewport.panTo(newCenterViewport, true);
   
   console.log('=========================');
   
@@ -557,7 +601,15 @@ const viewer = OpenSeadragon({
   minZoomLevel: 0.5,        // Prevent zooming out to blank low-res levels
   defaultZoomLevel: 1.0,    // Will be overridden based on fit calculation
   visibilityRatio: 1.0,     // Keep entire image in view
-  constrainDuringPan: true
+  constrainDuringPan: true,
+  
+  // === TILE LOADING OPTIMIZATION (fixes blurriness issues) ===
+  immediateRender: false,   // Wait for proper tiles before displaying (prevents blur)
+  blendTime: 0.1,           // Quick blend (was default 0.5s, too slow for discrete steps)
+  minPixelRatio: 0.8,       // Only show tiles with at least 80% of needed resolution
+  preload: true,            // Preload tiles from adjacent areas
+  imageLoaderLimit: 5,      // Allow up to 5 concurrent tile requests
+  timeout: 120000           // 2 minute timeout for tile loading
 });
 
 // Log when slide is loaded
@@ -590,24 +642,23 @@ viewer.addHandler('open', async () => {
     // Update debug UI
     updateDebugUI();
     
-    // Set initial zoom to exact start level (5× or 2.5×)
-    const startZoom = getZoomForMagnification(fitResult.startLevel, viewer);
-    viewer.viewport.zoomTo(startZoom, undefined, true); // immediate zoom, no animation
-    viewer.viewport.goHome(true); // Center the slide
+    // Set initial view to fit entire slide (home zoom)
+    viewer.viewport.goHome(true);
     
-    console.log(`Set start zoom: ${fitResult.startLevel}× (OSD zoom: ${startZoom.toFixed(3)})`);
+    console.log(`Initial view: Fit entire slide (home zoom)`);
     
-    // Initialize grid state
+    // Initialize grid state (will detect we're at fit level)
     updateGridState(viewer);
     
     // Save start state for Reset functionality
+    // Start state is "fit entire slide" (null magnification)
     const startCenter = getCurrentCenter();
     startState = {
-      zoomMag: fitResult.startLevel,
+      zoomMag: 2.5,  // Use 2.5 as placeholder for fit state (first click will go to 2.5×)
       centerX: startCenter.x,
       centerY: startCenter.y
     };
-    console.log(`Saved start state: ${startState.zoomMag}× at (${startState.centerX.toFixed(0)}, ${startState.centerY.toFixed(0)})`);
+    console.log(`Saved start state: fit entire slide, center at (${startState.centerX.toFixed(0)}, ${startState.centerY.toFixed(0)})`);
     
     // Log slide_load event
     logEvent('slide_load');
@@ -615,6 +666,23 @@ viewer.addHandler('open', async () => {
   } catch (error) {
     console.error('Failed to load manifest:', error);
     alert('Failed to load slide manifest. Check console for details.');
+  }
+});
+
+// Monitor tile loading for debugging (can remove if not needed)
+let tilesLoading = 0;
+viewer.addHandler('tile-load-failed', (event: any) => {
+  console.warn('[TILE] Load failed:', event.tile?.url || 'unknown tile');
+});
+
+viewer.addHandler('tile-loading', () => {
+  tilesLoading++;
+});
+
+viewer.addHandler('tile-loaded', () => {
+  tilesLoading--;
+  if (tilesLoading === 0) {
+    console.log('[TILE] All tiles loaded for current view');
   }
 });
 
@@ -744,14 +812,109 @@ document.addEventListener('keydown', (event) => {
   }
 });
 
+// ===== MOUSE WHEEL ZOOM =====
+// Enable discrete zoom in/out with mouse wheel
+// Zoom IN centers on cursor (like click), zoom OUT keeps current center
+const viewerElement = document.getElementById('viewer');
+if (viewerElement) {
+  viewerElement.addEventListener('wheel', (event: WheelEvent) => {
+    if (!manifest || !gridState) return;
+    
+    event.preventDefault(); // Prevent default scroll behavior
+    
+    // Check if we're currently in "fit" mode
+    const magInfo = getCurrentMagnificationAndLevel(viewer, manifest);
+    const currentMag = magInfo ? magInfo.mag : null; // null = fit mode
+    
+    // Determine zoom direction: wheel down = zoom out, wheel up = zoom in
+    const zoomOut = event.deltaY > 0;
+    
+    let newMag: number | null;
+    
+    if (zoomOut) {
+      // Zoom OUT
+      newMag = currentMag !== null ? getPreviousZoomLevel(currentMag) : null;
+      
+      if (newMag === currentMag || (currentMag === null && newMag === null)) {
+        console.log('Already at minimum zoom (fit)');
+        return;
+      }
+    } else {
+      // Zoom IN
+      newMag = getNextZoomLevel(currentMag);
+      
+      if (newMag === null || newMag === currentMag) {
+        console.log('Already at maximum zoom (40×)');
+        return;
+      }
+    }
+    
+    // Get target center
+    let targetCenter;
+    
+    if (!zoomOut && newMag !== null) {
+      // Zoom IN: Get cursor position in level-0 coordinates
+      const rect = viewerElement.getBoundingClientRect();
+      const pixelX = event.clientX - rect.left;
+      const pixelY = event.clientY - rect.top;
+      const viewportPoint = viewer.viewport.pointFromPixel(new OpenSeadragon.Point(pixelX, pixelY));
+      const imagePoint = viewer.viewport.viewportToImageCoordinates(viewportPoint);
+      
+      targetCenter = { x: imagePoint.x, y: imagePoint.y };
+      
+      console.log(`=== MOUSE WHEEL ZOOM IN ===`);
+      console.log(`${currentMag || 'fit'}× → ${newMag}×`);
+      console.log(`Centering on cursor: (${targetCenter.x.toFixed(0)}, ${targetCenter.y.toFixed(0)})`);
+    } else {
+      // Zoom OUT: Keep current center
+      targetCenter = getCurrentCenter();
+      
+      console.log(`=== MOUSE WHEEL ZOOM OUT ===`);
+      console.log(`${currentMag}× → ${newMag || 'fit'}×`);
+      console.log(`Keeping center: (${targetCenter.x.toFixed(0)}, ${targetCenter.y.toFixed(0)})`);
+    }
+    
+    // Zoom to target level
+    if (newMag === null) {
+      // Zoom to fit (home zoom)
+      viewer.viewport.goHome(true);
+    } else {
+      // Zoom to specific magnification using exact DZI level
+      const newDziLevel = manifest.magnification_levels[`${newMag}x` as '2.5x' | '5x' | '10x' | '20x' | '40x'];
+      const zoomValue = getZoomForDziLevel(newDziLevel, viewer);
+      viewer.viewport.zoomTo(zoomValue, undefined, true);
+      
+      // Pan to target center
+      const centerViewport = viewer.viewport.imageToViewportCoordinates(targetCenter.x, targetCenter.y);
+      viewer.viewport.panTo(centerViewport, true);
+    }
+    
+    console.log('===========================');
+    
+    // Log zoom event (after grid state updates)
+    setTimeout(() => logEvent('zoom_step'), 50);
+  });
+}
+
 // ===== CLICK-TO-ZOOM LADDER =====
 /**
  * Handle click on viewer: recenter to nearest patch center and step zoom.
  * Edge cells are filtered (not clickable).
- * At max zoom (40×), only recenter without zooming further.
+ * Ladder: fit → 2.5× → 5× → 10× → 20× → 40×
+ * At max zoom (40×), clicking does nothing (no recenter, no zoom).
  */
 viewer.addHandler('canvas-click', (event: any) => {
   if (!manifest || !gridState) return;
+  
+  // Check if we're in "fit" mode
+  const magInfo = getCurrentMagnificationAndLevel(viewer, manifest);
+  const currentMag = magInfo ? magInfo.mag : null;
+  
+  // At max zoom (40×), clicking does NOTHING (no recenter, no zoom)
+  if (currentMag === 40) {
+    console.log('Already at max zoom (40×) - clicking disabled');
+    return;
+  }
   
   // Get click position in viewport coordinates
   const viewportPoint = viewer.viewport.pointFromPixel(event.position);
@@ -759,7 +922,7 @@ viewer.addHandler('canvas-click', (event: any) => {
   // Convert to level-0 image coordinates
   const imagePoint = viewer.viewport.viewportToImageCoordinates(viewportPoint);
   
-  // Get grid indices
+  // Get grid indices for the CURRENT magnification (use 2.5× grid if in fit mode)
   const [i, j] = indexOf(imagePoint.x, imagePoint.y, gridState.cellSize);
   
   // Check if this is an edge cell - edge cells are not clickable
@@ -767,17 +930,21 @@ viewer.addHandler('canvas-click', (event: any) => {
   
   if (isEdge) {
     console.log(`Clicked edge cell (${i}, ${j}) - not clickable`);
-    // TODO: Add visual feedback for edge cell clicks (flash message or cursor change)
     return;
   }
   
-  // Get center of clicked cell in level-0 coordinates
-  const [centerX, centerY] = center(i, j, gridState.cellSize);
+  // Get the EXACT click position (not cell center)
+  // This ensures artifacts the user clicks on stay centered after zoom
+  const clickX = imagePoint.x;
+  const clickY = imagePoint.y;
   
   console.log('=== CLICK-TO-ZOOM ===');
-  console.log(`Clicked cell: (${i}, ${j})`);
-  console.log(`Cell center (level-0): (${centerX.toFixed(0)}, ${centerY.toFixed(0)})`);
-  console.log(`Current zoom: ${gridState.currentZoomMag}×`);
+  if (currentMag === null) {
+    console.log(`Clicked cell: (${i}, ${j}) at fit mode`);
+  } else {
+    console.log(`Clicked cell: (${i}, ${j}) at ${currentMag}× (DZI level ${gridState.currentDziLevel})`);
+  }
+  console.log(`Click position (level-0): (${clickX.toFixed(0)}, ${clickY.toFixed(0)})`);
   
   // Save current state to history before navigating
   pushHistory();
@@ -785,49 +952,43 @@ viewer.addHandler('canvas-click', (event: any) => {
   // Log cell_click event (before navigation)
   logEvent('cell_click', { cellI: i, cellJ: j });
   
-  // Recenter viewport to patch center
-  const centerViewport = viewer.viewport.imageToViewportCoordinates(centerX, centerY);
-  viewer.viewport.panTo(centerViewport, true); // immediate pan
+  // Recenter viewport to EXACT click position (not cell center)
+  const centerViewport = viewer.viewport.imageToViewportCoordinates(clickX, clickY);
+  viewer.viewport.panTo(centerViewport, true);
   
-  console.log(`Recentered to: (${centerX.toFixed(0)}, ${centerY.toFixed(0)})`);
+  console.log(`Recentered to: (${clickX.toFixed(0)}, ${clickY.toFixed(0)})`);
   
   // Check if we can zoom further
-  const nextZoom = getNextZoomLevel(gridState.currentZoomMag);
+  const nextZoom = getNextZoomLevel(currentMag);
   
   if (nextZoom !== null) {
-    // Step to next zoom level
-    const newZoomValue = getZoomForMagnification(nextZoom, viewer);
-    viewer.viewport.zoomTo(newZoomValue, undefined, true); // immediate zoom
-    console.log(`Zoomed: ${gridState.currentZoomMag}× → ${nextZoom}×`);
+    // Get exact DZI level for next zoom
+    const nextDziLevel = manifest.magnification_levels[`${nextZoom}x` as '2.5x' | '5x' | '10x' | '20x' | '40x'];
     
-    // Log zoom_step event (after zoom completes)
-    // Note: Grid state updates on next zoom handler tick, so we log with old zoom
-    // The viewport bounds will reflect the new zoom when logged
+    // Step to next zoom level using exact DZI level
+    const newZoomValue = getZoomForDziLevel(nextDziLevel, viewer);
+    viewer.viewport.zoomTo(newZoomValue, undefined, true);
+    
+    console.log(`Zoomed: ${currentMag || 'fit'}× → ${nextZoom}× (DZI ${nextDziLevel})`);
+    
+    // Log zoom_step event (after zoom completes and grid state updates)
     setTimeout(() => logEvent('zoom_step'), 50);
-  } else {
-    console.log('Already at max zoom (40×) - recentered only');
   }
   
   console.log('====================');
 });
 
-// ===== CELL INDEX HOVER OVERLAY =====
-// Show grid cell indices (i, j) under cursor
-const cellOverlay = document.getElementById('cell-overlay');
-
-// Update cell overlay on mouse move
-viewer.addHandler('canvas-drag', () => {
-  // Hide overlay during pan
-  if (cellOverlay) {
-    cellOverlay.classList.remove('visible');
-  }
-});
-
-// Track mouse position for cell overlay
-const viewerElement = document.getElementById('viewer');
+// ===== CURSOR STYLE FOR EDGE CELLS =====
+// Update cursor style based on whether cell is clickable
 if (viewerElement) {
   viewerElement.addEventListener('mousemove', (event: MouseEvent) => {
-    if (!manifest || !gridState || !cellOverlay) return;
+    if (!manifest || !gridState) return;
+    
+    // At max zoom (40×), show default cursor (clicking disabled)
+    if (gridState.currentZoomMag === 40) {
+      viewerElement.style.cursor = 'default';
+      return;
+    }
     
     // Get mouse position relative to viewer
     const rect = viewerElement.getBoundingClientRect();
@@ -843,7 +1004,6 @@ if (viewerElement) {
     // Check if point is within slide bounds
     if (imagePoint.x < 0 || imagePoint.x >= manifest.level0_width ||
         imagePoint.y < 0 || imagePoint.y >= manifest.level0_height) {
-      cellOverlay.classList.remove('visible');
       viewerElement.style.cursor = 'default';
       return;
     }
@@ -856,23 +1016,5 @@ if (viewerElement) {
     
     // Update cursor style: pointer for clickable cells, not-allowed for edge cells
     viewerElement.style.cursor = isEdge ? 'not-allowed' : 'pointer';
-    
-    // Update overlay content
-    const edgeLabel = isEdge ? ' [EDGE]' : '';
-    cellOverlay.textContent = `Cell: (${i}, ${j})${edgeLabel}`;
-    
-    // Position overlay near cursor (offset to avoid covering content)
-    cellOverlay.style.left = `${event.clientX + 15}px`;
-    cellOverlay.style.top = `${event.clientY + 15}px`;
-    
-    // Show overlay
-    cellOverlay.classList.add('visible');
-  });
-  
-  // Hide overlay when mouse leaves viewer
-  viewerElement.addEventListener('mouseleave', () => {
-    if (cellOverlay) {
-      cellOverlay.classList.remove('visible');
-    }
   });
 }

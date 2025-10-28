@@ -31,7 +31,8 @@ export interface SlideManifest {
  */
 export interface GridState {
   manifest: SlideManifest;
-  currentZoomMag: number;  // Current magnification (5, 10, 20, or 40)
+  currentZoomMag: number;  // Current magnification (2.5, 5, 10, 20, or 40)
+  currentDziLevel: number;  // Current DZI level index being viewed
   cellSize: number;  // Current cell size in level-0 pixels
   numCols: number;  // Number of complete columns
   numRows: number;  // Number of complete rows
@@ -41,7 +42,7 @@ export interface GridState {
  * Zoom history entry for Back/Reset functionality
  */
 export interface ZoomHistoryEntry {
-  zoomMag: number;  // Magnification level (2.5, 5, 10, 20, 40)
+  zoomMag: number;  // Magnification level (2.5, 5, 10, 20, 40) or placeholder for fit mode
   centerX: number;  // Center X in level-0 coordinates
   centerY: number;  // Center Y in level-0 coordinates
 }
@@ -69,7 +70,8 @@ export interface LogEvent {
   user_id: string;          // User identifier (placeholder in V1)
   slide_id: string;         // Slide identifier from manifest
   event: EventType;         // Event type
-  zoom_level: number;       // Current magnification (2.5, 5, 10, 20, 40)
+  zoom_level: number;       // Current magnification (2.5, 5, 10, 20, or 40)
+  dzi_level: number;        // DZI pyramid level index (14, 15, 16, 17, or 18)
   i: number | null;         // Grid cell column index (null if not applicable)
   j: number | null;         // Grid cell row index (null if not applicable)
   center_x0: number;        // Viewport center X in level-0 coords
