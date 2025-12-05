@@ -1,0 +1,20 @@
+# Python dependencies for data verification and analysis scripts
+# Install with: pip install -r requirements-analysis.txt
+
+# Core data processing
+pandas>=2.0.0
+numpy>=1.24.0
+
+# Optional: for advanced analysis (T-0011, T-0012)
+matplotlib>=3.7.0
+seaborn>=0.12.0
+Pillow>=10.0.0
+tqdm>=4.65.0
+
+# Optional: for OpenSlide patch extraction (T-0012)
+# openslide-python>=1.2.0
+# Note: Requires OpenSlide binary to be installed separately
+# Windows: Download from https://openslide.org/download/
+# Linux: apt-get install openslide-tools python3-openslide
+# macOS: brew install openslide
+

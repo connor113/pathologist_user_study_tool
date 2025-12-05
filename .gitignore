@@ -28,10 +28,12 @@ Thumbs.db
 # Runtime
 journal/
 logs/
-project_state/
-tasks/
 slides/
 tiles/
+
+# Data exports (CSV files)
+*.csv
+pathology_events*.csv
 
 # Backend (V2)
 backend/.env

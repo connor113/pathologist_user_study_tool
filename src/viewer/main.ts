@@ -3,14 +3,16 @@
  */
 
 import OpenSeadragon from 'openseadragon';
-import { indexOf, cellSizeForZoom, gridDimensions, isEdgeCell, center } from './lattice';
-import type { SlideManifest, GridState, ZoomHistoryEntry, LogEvent, EventType } from './types';
-import { calculateFit, type FitResult } from './fit';
+import type { SlideManifest, ViewerState, ZoomHistoryEntry, LogEvent, EventType, User } from './types';
+import { checkAuth, login, logout, getManifest, startSession } from './api';
+import { SlideQueue } from './SlideQueue';
+import { SessionManager } from './SessionManager';
+import { initDashboard, showDashboard, hideDashboard, setOnReplayLoad } from '../admin/dashboard';
+import { initReplay, setOnBack as setReplayOnBack } from '../admin/SessionReplay';
 
 // ===== STATE =====
 let manifest: SlideManifest | null = null;
-let gridState: GridState | null = null;
-let fitResult: FitResult | null = null;
+let viewerState: ViewerState | null = null;
 
 // Zoom history for Back/Reset navigation
 let zoomHistory: ZoomHistoryEntry[] = [];
@@ -19,37 +21,389 @@ let startState: ZoomHistoryEntry | null = null;
 // Label selection state
 let currentLabel: 'normal' | 'benign' | 'malignant' | null = null;
 
+// Auth state
+let currentUser: User | null = null;
+
 // Event logging
-const eventLog: LogEvent[] = [];
 const sessionId = crypto.randomUUID(); // Generate unique session ID
 const appVersion = '1.0.0-alpha';
-const userId = 'user_01'; // Placeholder in V1
+
+// ===== SLIDE QUEUE =====
+const slideQueue = new SlideQueue();
+
+// ===== SESSION MANAGER =====
+const sessionManager = new SessionManager();
+
+// Track whether we've logged the app start event for this browser session
+let appStartLogged = false;
+
+// ===== UI HELPERS =====
+function showLogin() {
+  const loginContainer = document.getElementById('login-container');
+  const appContainer = document.getElementById('app-container');
+  if (loginContainer) loginContainer.classList.remove('hidden');
+  if (appContainer) appContainer.classList.remove('visible');
+  
+  // Reset login form state
+  const loginBtn = document.getElementById('login-btn') as HTMLButtonElement;
+  const usernameInput = document.getElementById('username') as HTMLInputElement;
+  const passwordInput = document.getElementById('password') as HTMLInputElement;
+  
+  if (loginBtn) loginBtn.disabled = false;
+  if (usernameInput) usernameInput.value = '';
+  if (passwordInput) passwordInput.value = '';
+  
+  hideLoginError();
+  
+  // CRITICAL: Reset all app UI state to prevent persistence between users
+  resetAppUIState();
+}
+
+function resetAppUIState() {
+  console.log('[UI] Resetting all app UI state');
+  
+  // Re-enable confirm button (in case previous user finished study)
+  const btnConfirm = document.getElementById('btn-confirm') as HTMLButtonElement;
+  if (btnConfirm) {
+    btnConfirm.disabled = false;
+  }
+  
+  // Clear all radio button selections
+  const allRadios = document.querySelectorAll('input[name="diagnosis"]') as NodeListOf<HTMLInputElement>;
+  allRadios.forEach(radio => {
+    radio.checked = false;
+  });
+
+  // Clear notes textarea for the new slide
+  const notesTextarea = document.getElementById('notes-textarea') as HTMLTextAreaElement | null;
+  if (notesTextarea) {
+    notesTextarea.value = '';
+  }
+  
+  // Reset back button
+  const btnBack = document.getElementById('btn-back') as HTMLButtonElement;
+  if (btnBack) {
+    btnBack.disabled = true;
+  }
+  
+  // Clear viewer content
+  const viewerElement = document.getElementById('viewer');
+  if (viewerElement) {
+    viewerElement.innerHTML = '';
+  }
+  
+  // Reset progress display
+  const progressDisplay = document.getElementById('progress-display');
+  if (progressDisplay) {
+    progressDisplay.textContent = '-';
+  }
+  
+  const progressBar = document.getElementById('progress-bar');
+  if (progressBar) {
+    progressBar.style.width = '0%';
+  }
+  
+  // Hide debug section
+  const debugSection = document.getElementById('debug-section');
+  if (debugSection) {
+    debugSection.style.display = 'none';
+  }
+}
+
+function showApp() {
+  const loginContainer = document.getElementById('login-container');
+  const appContainer = document.getElementById('app-container');
+  if (loginContainer) loginContainer.classList.add('hidden');
+  if (appContainer) appContainer.classList.add('visible');
+}
+
+function showLoginError(message: string) {
+  const errorElement = document.getElementById('login-error');
+  if (errorElement) {
+    errorElement.textContent = message;
+    errorElement.classList.add('visible');
+  }
+}
+
+function hideLoginError() {
+  const errorElement = document.getElementById('login-error');
+  if (errorElement) {
+    errorElement.textContent = '';
+    errorElement.classList.remove('visible');
+  }
+}
+
+function updateUserDisplay() {
+  // Show debug section only for admin users
+  if (currentUser && currentUser.role === 'admin') {
+    const debugSection = document.getElementById('debug-section');
+    if (debugSection) {
+      debugSection.style.display = 'block';
+    }
+  }
+}
+
+function updateProgressDisplay() {
+  const progressDisplay = document.getElementById('progress-display');
+  const progressBar = document.getElementById('progress-bar');
+  
+  if (progressDisplay) {
+    const progress = slideQueue.getProgress();
+    if (slideQueue.isComplete()) {
+      progressDisplay.textContent = `Study Complete (${progress.completed}/${progress.total})`;
+    } else {
+      progressDisplay.textContent = `Slide ${progress.current + 1}/${progress.total}`;
+    }
+    
+    // Update visual progress bar
+    if (progressBar && progress.total > 0) {
+      const percentage = (progress.completed / progress.total) * 100;
+      progressBar.style.width = `${percentage}%`;
+    }
+  }
+}
+
+function showStudyComplete() {
+  const viewerElement = document.getElementById('viewer');
+  if (viewerElement) {
+    const progress = slideQueue.getProgress();
+    viewerElement.innerHTML = `
+      <div style="display: flex; justify-content: center; align-items: center; height: 100%; background: #000; color: #fff; font-size: 24px; text-align: center; flex-direction: column;">
+        <div style="margin-bottom: 20px; font-size: 48px;">🎉</div>
+        <div style="font-weight: bold; margin-bottom: 10px;">Study Complete!</div>
+        <div style="font-size: 18px; color: #aaa;">You have reviewed all ${progress.total} slides.</div>
+      </div>
+    `;
+  }
+}
+
+// ===== REPLAY SETUP HELPER =====
+function setupReplayCallbacks(): void {
+  // Set up callback for when replay is loaded from dashboard
+  setOnReplayLoad(async (data) => {
+    console.log('[Replay] Loading session replay...');
+    await initReplay(data);
+  });
+  
+  // Set up callback for returning from replay to dashboard
+  setReplayOnBack(() => {
+    console.log('[Replay] Returned to dashboard');
+  });
+}
+
+// ===== CHECK WINDOW SIZE ON LOGIN =====
+/**
+ * Check if window is small and prompt user to maximize.
+ * Browsers don't allow JavaScript to programmatically maximize windows,
+ * so we show a friendly prompt instead.
+ */
+function checkWindowSize(): void {
+  const screenWidth = window.screen.availWidth;
+  const screenHeight = window.screen.availHeight;
+  const windowWidth = window.outerWidth;
+  const windowHeight = window.outerHeight;
+  
+  // If window is significantly smaller than screen (not maximized)
+  const widthRatio = windowWidth / screenWidth;
+  const heightRatio = windowHeight / screenHeight;
+  
+  console.log(`[UI] Window: ${windowWidth}x${windowHeight}, Screen: ${screenWidth}x${screenHeight}`);
+  
+  if (widthRatio < 0.9 || heightRatio < 0.9) {
+    // Show a brief prompt to maximize
+    const prompt = document.createElement('div');
+    prompt.id = 'maximize-prompt';
+    prompt.innerHTML = `
+      <div style="
+        position: fixed;
+        top: 20px;
+        left: 50%;
+        transform: translateX(-50%);
+        background: #333;
+        color: white;
+        padding: 12px 24px;
+        border-radius: 8px;
+        font-size: 14px;
+        z-index: 10000;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+        display: flex;
+        align-items: center;
+        gap: 12px;
+      ">
+        <span>📐 For the best experience, please maximize your browser window</span>
+        <button onclick="this.parentElement.remove()" style="
+          background: #667eea;
+          color: white;
+          border: none;
+          padding: 6px 12px;
+          border-radius: 4px;
+          cursor: pointer;
+          font-weight: bold;
+        ">OK</button>
+      </div>
+    `;
+    document.body.appendChild(prompt);
+    
+    // Auto-dismiss after 8 seconds
+    setTimeout(() => {
+      const el = document.getElementById('maximize-prompt');
+      if (el) el.remove();
+    }, 8000);
+  }
+}
+
+// ===== AUTH HANDLERS =====
+async function handleLogin(username: string, password: string): Promise<boolean> {
+  try {
+    hideLoginError();
+    console.log('[Auth] Attempting login for:', username);
+    const user = await login(username, password);
+    console.log('[Auth] Login response:', user);
+    if (user) {
+      currentUser = user;
+      console.log(`[Auth] Login successful: ${user.username} (${user.role})`);
+      
+      // Check window size and prompt to maximize if needed
+      checkWindowSize();
+      
+      // Role-based routing
+      if (user.role === 'admin') {
+        // Show admin dashboard
+        console.log('[Auth] User is admin, showing dashboard');
+        hideDashboard(); // Ensure clean state
+        showDashboard();
+        setupReplayCallbacks();
+        await initDashboard(user.username);
+        return true;
+      } else {
+        // Show pathologist viewer
+        console.log('[Auth] User is pathologist, showing viewer');
+        updateUserDisplay();
+        showApp();
+        return true;
+      }
+    } else {
+      console.error('[Auth] Login returned null/undefined');
+      showLoginError('Invalid username or password');
+      return false;
+    }
+  } catch (error) {
+    console.error('[Auth] Login error:', error);
+    // Show the actual error message for debugging
+    const errorMessage = error instanceof Error ? error.message : 'Login failed. Please try again.';
+    console.error('[Auth] Error message:', errorMessage);
+    showLoginError(`Login failed: ${errorMessage}`);
+    return false;
+  }
+}
+
+async function handleLogout() {
+  try {
+    await logout();
+    currentUser = null;
+    
+    // Reset viewer state
+    if (viewer) {
+      viewer.destroy();
+      viewer = null;  // Set to null so it can be recreated on next login
+    }
+    
+    // Clear slide state
+    slideQueue.reset();
+    sessionManager.flushBufferedEventsSync();
+    sessionManager.reset();
+    manifest = null;
+    viewerState = null;
+    zoomHistory = [];
+    startState = null;
+    currentLabel = null;
+    appStartLogged = false;
+    
+    showLogin();
+  } catch (error) {
+    console.error('[Auth] Logout error:', error);
+    // Still show login even if API call fails
+    currentUser = null;
+    if (viewer) {
+      viewer.destroy();
+      viewer = null;
+    }
+    slideQueue.reset();
+    sessionManager.reset();
+    showLogin();
+  }
+}
+
+async function initAuth() {
+  try {
+    const user = await checkAuth();
+    if (user) {
+      currentUser = user;
+      console.log(`[Auth] User authenticated: ${user.username} (${user.role})`);
+      
+      // Role-based routing
+      if (user.role === 'admin') {
+        // Show admin dashboard
+        console.log('[Auth] User is admin, showing dashboard');
+        hideDashboard(); // Ensure clean state
+        showDashboard();
+        setupReplayCallbacks();
+        await initDashboard(user.username);
+        return true;
+      } else {
+        // Show pathologist viewer
+        console.log('[Auth] User is pathologist, showing viewer');
+        updateUserDisplay();
+        showApp();
+        return true;
+      }
+    } else {
+      showLogin();
+      return false;
+    }
+  } catch (error) {
+    console.error('[Auth] Check auth error:', error);
+    showLogin();
+    return false;
+  }
+}
 
 // ===== LOAD MANIFEST =====
-async function loadManifest(): Promise<SlideManifest> {
-  const response = await fetch('/tiles/test_slide_files/manifest.json');
-  if (!response.ok) {
-    throw new Error(`Failed to load manifest: ${response.statusText}`);
+async function loadManifest(slideId: string): Promise<SlideManifest> {
+  try {
+    // Try loading from API first
+    const manifestData = await getManifest(slideId);
+    console.log(`[Demo] Loaded manifest from API for: ${slideId}`);
+    return manifestData;
+  } catch (error) {
+    console.warn(`[Demo] API failed, loading local manifest for: ${slideId}`);
+    // Fallback to local files
+    const response = await fetch(`/tiles/${slideId}_files/manifest.json`);
+    if (!response.ok) {
+      throw new Error(`Failed to load manifest: ${response.statusText}`);
+    }
+    const data = await response.json();
+    console.log('Manifest loaded:', data);
+    return data;
   }
-  const data = await response.json();
-  console.log('Manifest loaded:', data);
-  return data;
 }
 
 // ===== EVENT LOGGING =====
 /**
  * Log an event with full viewport bounds and metadata.
+ * All coordinates are in level-0 (full resolution) pixel space.
  */
 function logEvent(
   eventType: EventType,
   options: {
-    cellI?: number | null;
-    cellJ?: number | null;
+    clickX?: number | null;  // Exact click X in level-0 coords (for cell_click)
+    clickY?: number | null;  // Exact click Y in level-0 coords (for cell_click)
     label?: string;
+    notes?: string | null;
   } = {}
 ) {
-  if (!manifest || !gridState) {
-    console.warn('Cannot log event: manifest or gridState not loaded');
+  if (!manifest || !viewerState) {
+    console.warn('Cannot log event: manifest or viewerState not loaded');
     return;
   }
   
@@ -73,14 +427,14 @@ function logEvent(
   
   const event: LogEvent = {
     ts_iso8601: new Date().toISOString(),
-    session_id: sessionId,
-    user_id: userId,
+    session_id: sessionManager.getSessionId() || sessionId,
+    user_id: currentUser?.id || 'unknown',
     slide_id: manifest.slide_id,
     event: eventType,
-    zoom_level: gridState.currentZoomMag,
-    dzi_level: gridState.currentDziLevel,
-    i: options.cellI ?? null,
-    j: options.cellJ ?? null,
+    zoom_level: viewerState.currentZoomMag,
+    dzi_level: viewerState.currentDziLevel,
+    click_x0: options.clickX ?? null,  // Exact click position (only for cell_click)
+    click_y0: options.clickY ?? null,
     center_x0: center.x,
     center_y0: center.y,
     vbx0: topLeft.x,
@@ -90,111 +444,20 @@ function logEvent(
     container_w: containerWidth,
     container_h: containerHeight,
     dpr: window.devicePixelRatio,
-    patch_px: manifest.patch_px,
-    tile_size: manifest.tile_size,
-    alignment_ok: manifest.alignment_ok,
     app_version: appVersion,
-    label: options.label
+    label: options.label,
+    notes: options.notes ?? null
   };
   
-  eventLog.push(event);
+  // Upload via SessionManager (noop until session established)
+  sessionManager.addEvent(event);
   console.log(`[LOG] ${eventType}:`, event);
 }
 
 /**
  * Export event log as CSV file and trigger download.
  */
-function exportCSV() {
-  if (eventLog.length === 0) {
-    alert('No events to export. Interact with the viewer first.');
-    return;
-  }
-  
-  if (!manifest) {
-    alert('Cannot export: manifest not loaded.');
-    return;
-  }
-  
-  // CSV header row (matches spec schema + dzi_level)
-  const headers = [
-    'ts_iso8601',
-    'session_id',
-    'user_id',
-    'slide_id',
-    'event',
-    'zoom_level',
-    'dzi_level',
-    'i',
-    'j',
-    'center_x0',
-    'center_y0',
-    'vbx0',
-    'vby0',
-    'vtx0',
-    'vty0',
-    'container_w',
-    'container_h',
-    'dpr',
-    'patch_px',
-    'tile_size',
-    'alignment_ok',
-    'app_version',
-    'label'
-  ];
-  
-  // Convert events to CSV rows
-  const rows = eventLog.map(event => [
-    event.ts_iso8601,
-    event.session_id,
-    event.user_id,
-    event.slide_id,
-    event.event,
-    event.zoom_level,
-    event.dzi_level,
-    event.i ?? '',
-    event.j ?? '',
-    event.center_x0.toFixed(2),
-    event.center_y0.toFixed(2),
-    event.vbx0.toFixed(2),
-    event.vby0.toFixed(2),
-    event.vtx0.toFixed(2),
-    event.vty0.toFixed(2),
-    event.container_w,
-    event.container_h,
-    event.dpr,
-    event.patch_px,
-    event.tile_size,
-    event.alignment_ok,
-    event.app_version,
-    event.label ?? ''
-  ]);
-  
-  // Build CSV content
-  const csvContent = [
-    headers.join(','),
-    ...rows.map(row => row.join(','))
-  ].join('\n');
-  
-  // Generate filename
-  const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
-  const filename = `session_${timestamp}_${manifest.slide_id}.csv`;
-  
-  // Create blob and trigger download
-  const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement('a');
-  link.href = url;
-  link.download = filename;
-  link.style.display = 'none';
-  document.body.appendChild(link);
-  link.click();
-  document.body.removeChild(link);
-  URL.revokeObjectURL(url);
-  
-  console.log(`=== CSV EXPORT ===`);
-  console.log(`Exported ${eventLog.length} events to ${filename}`);
-  console.log('==================');
-}
+// CSV export removed - events are now uploaded to backend via API
 
 // ===== MAGNIFICATION ↔ DZI LEVEL MAPPING =====
 /**
@@ -207,7 +470,6 @@ function getZoomForDziLevel(dziLevel: number, viewer: OpenSeadragon.Viewer): num
   // and the current viewport size. For a specific DZI level, we need to calculate
   // the zoom that would display that level at 1:1 pixel ratio
   
-  const homeZoom = viewer.viewport.getHomeZoom();
   const maxLevel = viewer.world.getItemAt(0).source.maxLevel;
   
   // Each DZI level is 2× the previous level
@@ -263,27 +525,21 @@ function getCurrentMagnificationAndLevel(viewer: OpenSeadragon.Viewer, manifest:
   return { mag: diffs[0].mag, dziLevel: diffs[0].dziLevel };
 }
 
-// ===== UPDATE GRID STATE =====
-function updateGridState(viewer: OpenSeadragon.Viewer) {
+// ===== UPDATE VIEWER STATE =====
+function updateViewerState(viewer: OpenSeadragon.Viewer) {
   if (!manifest) return;
   
   const magInfo = getCurrentMagnificationAndLevel(viewer, manifest);
   
-  // If we're in "fit" mode (null), use 2.5× as reference for grid calculations
+  // If we're in "fit" mode (null), use 2.5× as reference
   // This represents the first click level
   const mag = magInfo ? magInfo.mag : 2.5;
   const dziLevel = magInfo ? magInfo.dziLevel : manifest.magnification_levels['2.5x'];
   
-  const cellSize = cellSizeForZoom(manifest.patch_px, mag);
-  const [numCols, numRows] = gridDimensions(manifest.level0_width, manifest.level0_height, cellSize);
-  
-  gridState = {
+  viewerState = {
     manifest,
     currentZoomMag: mag,
-    currentDziLevel: dziLevel,
-    cellSize,
-    numCols,
-    numRows
+    currentDziLevel: dziLevel
   };
   
   // Update debug UI
@@ -294,26 +550,39 @@ function updateGridState(viewer: OpenSeadragon.Viewer) {
 function updateDebugUI() {
   // Update current zoom level
   const zoomEl = document.getElementById('current-zoom');
-  if (zoomEl && gridState) {
-    zoomEl.textContent = `${gridState.currentZoomMag}×`;
+  if (zoomEl && viewerState) {
+    zoomEl.textContent = `${viewerState.currentZoomMag}×`;
   }
   
-  // Update fit status
-  const fitStatusEl = document.getElementById('fit-status');
-  if (fitStatusEl && fitResult) {
-    fitStatusEl.textContent = fitResult.fitsAt5x ? 'Yes' : 'No';
-  }
+  // Fit calculation removed - no longer needed since we always fit entire slide
   
-  // Update start level
-  const startLevelEl = document.getElementById('start-level');
-  if (startLevelEl && fitResult) {
-    startLevelEl.textContent = `${fitResult.startLevel}×`;
-  }
-  
-  // Update grid dimensions
+  // Update DZI level
   const gridDimsEl = document.getElementById('grid-dims');
-  if (gridDimsEl && gridState) {
-    gridDimsEl.textContent = `${gridState.numCols} × ${gridState.numRows} cells`;
+  if (gridDimsEl && viewerState) {
+    gridDimsEl.textContent = `DZI Level ${viewerState.currentDziLevel}`;
+  }
+  
+  // Update magnification display in side panel
+  updateMagnificationDisplay();
+}
+
+// ===== UPDATE MAGNIFICATION DISPLAY =====
+/**
+ * Update the magnification display in the side panel.
+ * Shows "Fit to screen" when viewing entire slide, or "X×" for magnification levels.
+ */
+function updateMagnificationDisplay() {
+  const magDisplayEl = document.getElementById('magnification-display');
+  if (!magDisplayEl || !manifest) return;
+  
+  const magInfo = getCurrentMagnificationAndLevel(viewer, manifest);
+  
+  if (magInfo === null) {
+    // We're in fit mode - entire slide visible
+    magDisplayEl.textContent = 'Fit to screen';
+  } else {
+    // Show current magnification level
+    magDisplayEl.textContent = `${magInfo.mag}×`;
   }
 }
 
@@ -363,11 +632,11 @@ function getCurrentCenter(): { x: number; y: number } {
  * Save current state to history before navigating.
  */
 function pushHistory() {
-  if (!gridState) return;
+  if (!viewerState) return;
   
   const center = getCurrentCenter();
   zoomHistory.push({
-    zoomMag: gridState.currentZoomMag,
+    zoomMag: viewerState.currentZoomMag,
     centerX: center.x,
     centerY: center.y
   });
@@ -392,28 +661,31 @@ function goBack() {
   console.log(`Restoring: ${previousState.zoomMag}× at (${previousState.centerX.toFixed(0)}, ${previousState.centerY.toFixed(0)})`);
   
   // Check if this is the start state (fit mode)
-  if (previousState.zoomMag === startState.zoomMag && 
+  if (startState && 
+      previousState.zoomMag === startState.zoomMag && 
       Math.abs(previousState.centerX - startState.centerX) < 100 && 
       Math.abs(previousState.centerY - startState.centerY) < 100) {
-    // Go to fit mode
-    viewer.viewport.goHome(true);
+    // Go to fit mode: use fitBounds to ensure entire slide is visible
+    // Use animated transition for better tile loading
+    const imageBounds = viewer.world.getItemAt(0).getBounds();
+    viewer.viewport.fitBounds(imageBounds, false);
     console.log('Restored to fit mode (start state)');
   } else {
     // Restore to specific zoom level using DZI level
     const dziLevel = manifest.magnification_levels[`${previousState.zoomMag}x` as '2.5x' | '5x' | '10x' | '20x' | '40x'];
     const zoomValue = getZoomForDziLevel(dziLevel, viewer);
-    viewer.viewport.zoomTo(zoomValue, undefined, true);
+    viewer.viewport.zoomTo(zoomValue, undefined, true); // immediate
     
     // Restore center
     const centerViewport = viewer.viewport.imageToViewportCoordinates(previousState.centerX, previousState.centerY);
-    viewer.viewport.panTo(centerViewport, true);
+    viewer.viewport.panTo(centerViewport, true); // immediate
     
     console.log(`Restored to ${previousState.zoomMag}× (DZI ${dziLevel})`);
   }
   
-  // Force grid state update after going back (fixes cursor state issue)
+  // Force viewer state update after going back
   setTimeout(() => {
-    updateGridState(viewer);
+    updateViewerState(viewer);
     updateBackButton();
   }, 100);
   
@@ -439,14 +711,17 @@ function resetView() {
   // Clear zoom history
   zoomHistory = [];
   
-  // Go to fit mode (home zoom) - shows entire slide
-  viewer.viewport.goHome(true);
+  // CRITICAL: Use fitBounds instead of goHome to ensure entire slide is visible
+  // This matches the initialization behavior and prevents viewport bounds issues
+  // Use animated transition (false) to give OpenSeadragon time to prioritize tile loading
+  const imageBounds = viewer.world.getItemAt(0).getBounds();
+  viewer.viewport.fitBounds(imageBounds, false); // Animate for better tile loading
   
-  console.log('Reset to fit mode');
+  console.log(`Reset to fit mode: bounds (${imageBounds.width.toFixed(2)} × ${imageBounds.height.toFixed(2)})`);
   
-  // Force grid state update after reset (fixes cursor state issue)
+  // Force viewer state update after reset
   setTimeout(() => {
-    updateGridState(viewer);
+    updateViewerState(viewer);
     updateBackButton();
   }, 100);
   
@@ -466,10 +741,40 @@ function updateBackButton() {
   }
 }
 
+/**
+ * Update arrow navigation button state based on zoom level.
+ * Disables buttons when entire slide is visible (fit mode), enables when zoomed in.
+ */
+function updateArrowButtonState() {
+  if (!manifest || !viewer) return;
+  
+  const btnUp = document.getElementById('btn-up') as HTMLButtonElement;
+  const btnDown = document.getElementById('btn-down') as HTMLButtonElement;
+  const btnLeft = document.getElementById('btn-left') as HTMLButtonElement;
+  const btnRight = document.getElementById('btn-right') as HTMLButtonElement;
+  
+  // Check if we're in "fit entire slide" mode
+  const magInfo = getCurrentMagnificationAndLevel(viewer, manifest);
+  const isInFitMode = magInfo === null;
+  
+  // Disable arrows when entire slide is visible (no panning needed)
+  // Enable when zoomed in (panning is useful)
+  if (btnUp) btnUp.disabled = isInFitMode;
+  if (btnDown) btnDown.disabled = isInFitMode;
+  if (btnLeft) btnLeft.disabled = isInFitMode;
+  if (btnRight) btnRight.disabled = isInFitMode;
+  
+  if (isInFitMode) {
+    console.log('[UI] Arrow buttons disabled - entire slide visible');
+  } else {
+    console.log('[UI] Arrow buttons enabled - zoomed in');
+  }
+}
+
 // ===== ARROW NAVIGATION =====
 /**
- * Pan viewport by 0.5× viewport dimension in the specified direction.
- * Clamps to slide bounds to prevent panning beyond the image.
+ * Pan viewport by 0.4× (40%) viewport dimension in the specified direction.
+ * This provides good visual continuity - old content stays partially visible.
  */
 function panByArrow(direction: 'up' | 'down' | 'left' | 'right') {
   if (!manifest) {
@@ -477,88 +782,58 @@ function panByArrow(direction: 'up' | 'down' | 'left' | 'right') {
     return;
   }
   
+  // Save current state to history before panning (so Back can undo this)
+  pushHistory();
+  
   const viewport = viewer.viewport;
-  
-  // Get current viewport bounds in viewport coordinates (0-1 normalized)
-  const bounds = viewport.getBounds();
-  
-  // Convert to level-0 pixel coordinates
-  const topLeft = viewport.viewportToImageCoordinates(bounds.x, bounds.y);
-  const bottomRight = viewport.viewportToImageCoordinates(
-    bounds.x + bounds.width,
-    bounds.y + bounds.height
-  );
-  
-  const viewportWidth = bottomRight.x - topLeft.x;
-  const viewportHeight = bottomRight.y - topLeft.y;
+  const tiledImage = viewer.world.getItemAt(0);
   
   console.log(`=== ARROW PAN: ${direction.toUpperCase()} ===`);
-  console.log(`Viewport size: ${viewportWidth.toFixed(0)} × ${viewportHeight.toFixed(0)} px`);
-  console.log(`Slide size: ${manifest.level0_width} × ${manifest.level0_height} px`);
   
-  // If viewport is larger than slide, don't pan (entire slide is visible)
-  if (viewportWidth >= manifest.level0_width && viewportHeight >= manifest.level0_height) {
-    console.log('Entire slide visible - no panning needed');
-    return;
-  }
+  // Get current viewport bounds in IMAGE PIXEL coordinates
+  // This ensures consistent behavior across different aspect ratios
+  const viewportRect = tiledImage.viewportToImageRectangle(viewport.getBounds());
   
-  // Calculate pan distance (0.5× viewport dimension)
-  const panDistanceX = viewportWidth * 0.5;
-  const panDistanceY = viewportHeight * 0.5;
+  const viewportWidthPx = viewportRect.width;
+  const viewportHeightPx = viewportRect.height;
   
-  // Get current center in level-0 coordinates
-  const center = viewport.viewportToImageCoordinates(
-    bounds.x + bounds.width / 2,
-    bounds.y + bounds.height / 2
-  );
+  console.log(`Viewport size: ${viewportWidthPx.toFixed(0)} × ${viewportHeightPx.toFixed(0)} px`);
   
-  console.log(`Current center: (${center.x.toFixed(0)}, ${center.y.toFixed(0)})`);
+  // Calculate pan distance: 40% of viewport dimension in pixels
+  const panDistanceX = viewportWidthPx * 0.4;
+  const panDistanceY = viewportHeightPx * 0.4;
   
-  let newCenterX = center.x;
-  let newCenterY = center.y;
+  console.log(`Pan distance: ${panDistanceX.toFixed(0)} × ${panDistanceY.toFixed(0)} px (40% of viewport)`);
+  
+  // Get current center in IMAGE PIXEL coordinates
+  const centerViewport = viewport.getCenter();
+  const centerImage = tiledImage.viewportToImageCoordinates(centerViewport);
+  
+  console.log(`Current center: (${centerImage.x.toFixed(0)}, ${centerImage.y.toFixed(0)}) px`);
+  
+  let newCenterX = centerImage.x;
+  let newCenterY = centerImage.y;
   
   // Apply pan based on direction
   switch (direction) {
     case 'up':
       newCenterY -= panDistanceY;
-      console.log(`Moving UP: Y ${center.y.toFixed(0)} → ${newCenterY.toFixed(0)}`);
       break;
     case 'down':
       newCenterY += panDistanceY;
-      console.log(`Moving DOWN: Y ${center.y.toFixed(0)} → ${newCenterY.toFixed(0)}`);
       break;
     case 'left':
       newCenterX -= panDistanceX;
-      console.log(`Moving LEFT: X ${center.x.toFixed(0)} → ${newCenterX.toFixed(0)}`);
       break;
     case 'right':
       newCenterX += panDistanceX;
-      console.log(`Moving RIGHT: X ${center.x.toFixed(0)} → ${newCenterX.toFixed(0)}`);
       break;
   }
   
-  // Clamp to slide bounds
-  // Ensure the viewport stays within [0, slideWidth] × [0, slideHeight]
-  const halfViewportWidth = viewportWidth / 2;
-  const halfViewportHeight = viewportHeight / 2;
-  
-  // If viewport is larger than slide in a dimension, center it
-  if (viewportWidth >= manifest.level0_width) {
-    newCenterX = manifest.level0_width / 2;
-  } else {
-    newCenterX = Math.max(halfViewportWidth, Math.min(manifest.level0_width - halfViewportWidth, newCenterX));
-  }
-  
-  if (viewportHeight >= manifest.level0_height) {
-    newCenterY = manifest.level0_height / 2;
-  } else {
-    newCenterY = Math.max(halfViewportHeight, Math.min(manifest.level0_height - halfViewportHeight, newCenterY));
-  }
-  
-  console.log(`After clamp: (${newCenterX.toFixed(0)}, ${newCenterY.toFixed(0)})`);
+  console.log(`New center: (${newCenterX.toFixed(0)}, ${newCenterY.toFixed(0)}) px`);
   
   // Convert back to viewport coordinates and pan
-  const newCenterViewport = viewport.imageToViewportCoordinates(newCenterX, newCenterY);
+  const newCenterViewport = tiledImage.imageToViewportCoordinates(new OpenSeadragon.Point(newCenterX, newCenterY));
   viewport.panTo(newCenterViewport, true);
   
   console.log('=========================');
@@ -567,11 +842,70 @@ function panByArrow(direction: 'up' | 'down' | 'left' | 'right') {
   logEvent('arrow_pan');
 }
 
-// Initialize OpenSeadragon viewer
-const viewer = OpenSeadragon({
+// ===== SLIDE LOADING =====
+async function loadSlide(slideId: string) {
+  console.log(`[Viewer] Loading slide: ${slideId}`);
+  
+  // Initialize viewer if it doesn't exist (e.g., after logout)
+  if (!viewer) {
+    console.log('[Viewer] Viewer not initialized, creating new viewer');
+    initializeViewer();
+  }
+  
+  // CRITICAL: Clear any existing tile sources before loading new slide
+  // This prevents old tile requests from interfering with new slide loading
+  if (viewer.world.getItemCount() > 0) {
+    console.log('[Viewer] Clearing previous slide...');
+    viewer.world.removeAll();
+    // Small delay to ensure cleanup completes
+    await new Promise(resolve => setTimeout(resolve, 50));
+  }
+  
+  // Reset state
+  zoomHistory = [];
+  startState = null;
+  currentLabel = null;
+  
+  // Clear all radio button selections
+  const allRadios = document.querySelectorAll('input[name="diagnosis"]') as NodeListOf<HTMLInputElement>;
+  allRadios.forEach(radio => {
+    radio.checked = false;
+  });
+  
+  // Construct DZI URL
+  // For now, use local tiles path. In production, this could come from manifest or S3
+  // Backend will eventually serve this via API or provide S3 URLs
+  const dziUrl = `/tiles/${slideId}.dzi`;
+  console.log(`[Viewer] DZI URL: ${dziUrl}`);
+  
+  // Load new slide into viewer
+  // The main 'open' handler will handle the viewport fitting
+  // Register listener before triggering load to avoid missing fast events
+  return new Promise<void>((resolve) => {
+    const handler = () => {
+      console.log(`[Demo] Slide loaded and fitted: ${slideId}`);
+      resolve();
+    };
+
+    viewer.addOnceHandler('open', handler);
+    viewer.open(dziUrl);
+  });
+}
+
+// Initialize OpenSeadragon viewer (will be created dynamically)
+let viewer: any = null;
+
+function initializeViewer() {
+  if (viewer) {
+    console.log('[Viewer] Viewer already exists, skipping initialization');
+    return viewer;
+  }
+  
+  console.log('[Viewer] Creating new OpenSeadragon viewer');
+  viewer = OpenSeadragon({
   id: "viewer",
   prefixUrl: "https://cdn.jsdelivr.net/npm/openseadragon@4.1/build/openseadragon/images/",
-  tileSources: "/tiles/test_slide.dzi",
+  // No initial tileSources - will be set via viewer.open() when slide is loaded
   
   // Disable all built-in navigation controls
   showNavigationControl: false,
@@ -598,57 +932,85 @@ const viewer = OpenSeadragon({
   
   // Constrain to useful magnification levels (2.5× to 40×)
   // DZI levels: 14=2.5×, 15=5×, 16=10×, 17=20×, 18=40×
-  minZoomLevel: 0.5,        // Prevent zooming out to blank low-res levels
+  minZoomLevel: 0.1,        // Allow zooming out far enough to show entire slide
   defaultZoomLevel: 1.0,    // Will be overridden based on fit calculation
-  visibilityRatio: 1.0,     // Keep entire image in view
+  visibilityRatio: 1.0,     // Keep entire image in view during pan
   constrainDuringPan: true,
   
-  // === TILE LOADING OPTIMIZATION (fixes blurriness issues) ===
-  immediateRender: false,   // Wait for proper tiles before displaying (prevents blur)
-  blendTime: 0.1,           // Quick blend (was default 0.5s, too slow for discrete steps)
-  minPixelRatio: 0.8,       // Only show tiles with at least 80% of needed resolution
-  preload: true,            // Preload tiles from adjacent areas
-  imageLoaderLimit: 5,      // Allow up to 5 concurrent tile requests
-  timeout: 120000           // 2 minute timeout for tile loading
+  // CRITICAL: Ensure goHome() fits entire image instead of filling/cropping
+  homeFillsViewer: false,   // false = fit entire image, true = fill viewport (can crop)
+  
+  // Set viewport margins to 0 to prevent extra panning space at fit level
+  viewportMargins: {
+    left: 0,
+    top: 0,
+    right: 0,
+    bottom: 0
+  },
+  
+  // === TILE LOADING OPTIMIZATION ===
+  // CRITICAL: Disable immediateRender to prevent blurry tiles from showing
+  // This forces OSD to wait for correct resolution tiles before displaying
+  immediateRender: false,   // Wait for correct resolution (no blurry tiles!)
+  blendTime: 0,             // No fade/blend - instant tile display
+  minPixelRatio: 1.0,       // Require full-resolution tiles
+  maxImageCacheCount: 300,  // Moderate cache size to prevent memory bloat
+  
+  // CRITICAL: Conservative loading for local dev server
+  preload: false,           // Disable preload - only load visible tiles (prevents queue overload)
+  imageLoaderLimit: 4,      // VERY CONSERVATIVE: Only 4 concurrent requests (dev server limitation)
+  timeout: 30000,           // 30 second timeout (dev server can be slow under load)
+  
+  // CRITICAL: Tile update strategy
+  alwaysBlend: false,       // Don't blend tiles (instant display)
+  // Use default composition (fastest) - omit property to use default
+  // Don't show placeholder (wait for real tiles) - omit property to use default
+  
+  // Viewport animation - slower to give tiles time to load
+  springStiffness: 6.5,     // Default spring (was too fast at 15.0)
+  animationTime: 1.0,       // Slower animation = tiles load before viewport settles
+  
+  // CRITICAL: Only show tiles at correct resolution
+  minZoomImageRatio: 1.0,   // Require 100% resolution (was 0.8 allowing blur)
+  maxZoomPixelRatio: 1.1,   // Allow slight over-zoom before loading next level
+  
+  // Performance
+  autoResize: true,
+  smoothTileEdgesMinZoom: Infinity, // Disable edge smoothing
+  preserveImageSizeOnResize: true,
+  
+  // Memory and caching
+  collectionMode: false,
+  showSequenceControl: false,
+  wrapHorizontal: false,
+  wrapVertical: false
 });
 
-// Log when slide is loaded
+// Handle slide loaded event - combines initialization, UI updates, and button state management
 viewer.addHandler('open', async () => {
   console.log('Slide loaded successfully!');
   console.log('Image dimensions:', viewer.world.getItemAt(0).getContentSize());
   
-  // Load manifest and initialize grid state
+  // Load manifest and initialize state
   try {
-    manifest = await loadManifest();
+    // Get current slide ID
+    const currentSlide = slideQueue.getCurrentSlide();
+    const slideId = currentSlide ? currentSlide.slide_id : 'test_slide';
     
-    // Calculate fit and determine start level
-    const containerWidth = viewer.container.clientWidth;
-    const containerHeight = viewer.container.clientHeight;
-    
-    fitResult = calculateFit(
-      manifest.level0_width,
-      manifest.level0_height,
-      containerWidth,
-      containerHeight
-    );
-    
-    console.log('=== FIT CALCULATION ===');
-    console.log(`Container: ${containerWidth} × ${containerHeight} px`);
-    console.log(`Slide at 5×: ${fitResult.displayWidthAt5x.toFixed(0)} × ${fitResult.displayHeightAt5x.toFixed(0)} px`);
-    console.log(`Fits at 5×: ${fitResult.fitsAt5x}`);
-    console.log(`Start level: ${fitResult.startLevel}×`);
-    console.log('=======================');
+    manifest = await loadManifest(slideId);
     
     // Update debug UI
     updateDebugUI();
     
-    // Set initial view to fit entire slide (home zoom)
-    viewer.viewport.goHome(true);
+    // CRITICAL: Ensure ENTIRE slide is visible on all screen sizes/aspect ratios
+    // Use fitBounds with the full image bounds to guarantee everything is shown
+    const imageBounds = viewer.world.getItemAt(0).getBounds();
+    viewer.viewport.fitBounds(imageBounds, true);
     
-    console.log(`Initial view: Fit entire slide (home zoom)`);
+    console.log(`Initial view: Fitted entire slide bounds (${imageBounds.width.toFixed(2)} × ${imageBounds.height.toFixed(2)})`);
     
-    // Initialize grid state (will detect we're at fit level)
-    updateGridState(viewer);
+    // Initialize viewer state (will detect we're at fit level)
+    updateViewerState(viewer);
     
     // Save start state for Reset functionality
     // Start state is "fit entire slide" (null magnification)
@@ -660,8 +1022,28 @@ viewer.addHandler('open', async () => {
     };
     console.log(`Saved start state: fit entire slide, center at (${startState.centerX.toFixed(0)}, ${startState.centerY.toFixed(0)})`);
     
-    // Log slide_load event
+    // Create new session for this slide
+    if (currentSlide && currentUser) {
+      try {
+        // Use slide_id (string identifier) not id (database UUID)
+        const session = await startSession(currentSlide.slide_id);
+        sessionManager.setSession(session.session_id);
+        console.log(`[Session] Created session: ${session.session_id} for slide: ${currentSlide.slide_id}`);
+      } catch (error) {
+        console.error('[Session] Failed to create session:', error);
+        // Continue anyway - events will be logged locally
+      }
+    }
+    
+    // Log app_start once per application load, then log slide load event
+    if (!appStartLogged) {
+      logEvent('app_start');
+      appStartLogged = true;
+    }
     logEvent('slide_load');
+    
+    // Update arrow button state based on zoom level (disabled in fit mode, enabled when zoomed)
+    updateArrowButtonState();
     
   } catch (error) {
     console.error('Failed to load manifest:', error);
@@ -669,32 +1051,17 @@ viewer.addHandler('open', async () => {
   }
 });
 
-// Monitor tile loading for debugging (can remove if not needed)
-let tilesLoading = 0;
-viewer.addHandler('tile-load-failed', (event: any) => {
-  console.warn('[TILE] Load failed:', event.tile?.url || 'unknown tile');
-});
-
-viewer.addHandler('tile-loading', () => {
-  tilesLoading++;
-});
-
-viewer.addHandler('tile-loaded', () => {
-  tilesLoading--;
-  if (tilesLoading === 0) {
-    console.log('[TILE] All tiles loaded for current view');
-  }
-});
-
-// Update grid state when zoom changes
+// Update viewer state when zoom changes
 viewer.addHandler('zoom', () => {
   if (manifest) {
-    updateGridState(viewer);
+    updateViewerState(viewer);
+    // Update arrow button state when zoom changes (enable/disable based on fit mode)
+    updateArrowButtonState();
   }
 });
 
 // Log any errors
-viewer.addHandler('open-failed', (event) => {
+viewer.addHandler('open-failed', (event: any) => {
   console.error('Failed to load slide:', event);
   alert('Failed to load slide. Check console for details.');
 });
@@ -703,34 +1070,27 @@ viewer.addHandler('open-failed', (event) => {
 window.addEventListener('DOMContentLoaded', () => {
   console.log(`=== APP START ===`);
   console.log(`Session ID: ${sessionId}`);
-  console.log(`User ID: ${userId}`);
+  console.log(`User ID: ${currentUser?.id || 'not authenticated yet'}`);
   console.log(`App Version: ${appVersion}`);
   console.log('=================');
 });
 
 // ===== WIRE UP NAVIGATION BUTTONS =====
 // Enable arrow buttons after slide loads
-viewer.addHandler('open', () => {
-  // Get arrow button elements
-  const btnUp = document.getElementById('btn-up') as HTMLButtonElement;
-  const btnDown = document.getElementById('btn-down') as HTMLButtonElement;
-  const btnLeft = document.getElementById('btn-left') as HTMLButtonElement;
-  const btnRight = document.getElementById('btn-right') as HTMLButtonElement;
-  
-  // Enable buttons (remove disabled attribute)
-  if (btnUp) btnUp.disabled = false;
-  if (btnDown) btnDown.disabled = false;
-  if (btnLeft) btnLeft.disabled = false;
-  if (btnRight) btnRight.disabled = false;
-  
-  // Add click handlers
-  btnUp?.addEventListener('click', () => panByArrow('up'));
-  btnDown?.addEventListener('click', () => panByArrow('down'));
-  btnLeft?.addEventListener('click', () => panByArrow('left'));
-  btnRight?.addEventListener('click', () => panByArrow('right'));
-  
-  console.log('Arrow buttons enabled');
-});
+// Wire up arrow buttons (once, not every time a slide opens)
+const btnUp = document.getElementById('btn-up') as HTMLButtonElement;
+const btnDown = document.getElementById('btn-down') as HTMLButtonElement;
+const btnLeft = document.getElementById('btn-left') as HTMLButtonElement;
+const btnRight = document.getElementById('btn-right') as HTMLButtonElement;
+
+// Add click handlers
+btnUp?.addEventListener('click', () => panByArrow('up'));
+btnDown?.addEventListener('click', () => panByArrow('down'));
+btnLeft?.addEventListener('click', () => panByArrow('left'));
+btnRight?.addEventListener('click', () => panByArrow('right'));
+
+// Note: Arrow button state is now managed by updateArrowButtonState()
+// which is called on slide load and zoom changes
 
 // Wire up Back and Reset buttons
 const btnBack = document.getElementById('btn-back') as HTMLButtonElement;
@@ -738,10 +1098,6 @@ const btnReset = document.getElementById('btn-reset') as HTMLButtonElement;
 
 btnBack?.addEventListener('click', goBack);
 btnReset?.addEventListener('click', resetView);
-
-// Wire up Export CSV button
-const btnExport = document.getElementById('btn-export') as HTMLButtonElement;
-btnExport?.addEventListener('click', exportCSV);
 
 // ===== WIRE UP LABEL SELECTION =====
 // Track label selection
@@ -758,161 +1114,116 @@ labelRadios.forEach(radio => {
   });
 });
 
-// Handle Confirm & Next button
+// Handle Confirm & Next button (prevent multiple attachments with flag)
 const btnConfirm = document.getElementById('btn-confirm') as HTMLButtonElement;
-btnConfirm?.addEventListener('click', () => {
-  if (!currentLabel) {
-    alert('Please select a diagnosis before confirming.');
-    return;
-  }
-  
-  console.log('=== CONFIRM & NEXT ===');
-  console.log(`Confirmed label: ${currentLabel}`);
-  console.log('======================');
-  
-  // Log slide_next event
-  logEvent('slide_next', { label: currentLabel });
-  
-  // In V1, we don't have multiple slides, so just show confirmation
-  alert(`Diagnosis confirmed: ${currentLabel.charAt(0).toUpperCase() + currentLabel.slice(1)}\n\nIn V1, this would advance to the next slide.`);
-});
+let confirmHandlerAttached = false;
 
-// ===== KEYBOARD SHORTCUTS =====
-// Support both WASD and arrow keys
-document.addEventListener('keydown', (event) => {
-  // Don't interfere if user is typing in an input field
-  if (event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement) {
-    return;
-  }
-  
-  // Map keys to directions
-  const keyMap: Record<string, 'up' | 'down' | 'left' | 'right' | null> = {
-    'w': 'up',
-    'W': 'up',
-    'ArrowUp': 'up',
+if (btnConfirm && !confirmHandlerAttached) {
+  btnConfirm.addEventListener('click', async () => {
+    // Prevent double-clicking
+    if (btnConfirm.disabled) {
+      console.log('[Confirm] Already processing, ignoring click');
+      return;
+    }
     
-    's': 'down',
-    'S': 'down',
-    'ArrowDown': 'down',
+    // Read the selected diagnosis directly from the DOM (more reliable than tracking in variable)
+    const checkedRadio = document.querySelector('input[name="diagnosis"]:checked') as HTMLInputElement | null;
     
-    'a': 'left',
-    'A': 'left',
-    'ArrowLeft': 'left',
+    console.log('[Confirm] Checking diagnosis selection...');
+    console.log('[Confirm] Checked radio:', checkedRadio);
+    console.log('[Confirm] Value:', checkedRadio?.value);
     
-    'd': 'right',
-    'D': 'right',
-    'ArrowRight': 'right'
-  };
+    if (!checkedRadio || !checkedRadio.value) {
+      console.log('[Confirm] No diagnosis selected, showing alert');
+      alert('Please select a diagnosis before confirming.');
+      return;
+    }
+    
+    const selectedLabel = checkedRadio.value as 'normal' | 'benign' | 'malignant';
+    const notesTextarea = document.getElementById('notes-textarea') as HTMLTextAreaElement | null;
+    const notesValue = notesTextarea?.value?.trim();
+    const notePayload = notesValue && notesValue.length > 0 ? notesValue : null;
+    
+    console.log('=== CONFIRM & NEXT ===');
+    console.log(`Confirmed label: ${selectedLabel}`);
+    console.log('======================');
+    
+    // Disable button during processing
+    btnConfirm.disabled = true;
+    
+    // Update currentLabel for logging
+    currentLabel = selectedLabel;
+    
+    // Log slide_next event
+    logEvent('slide_next', { label: selectedLabel, notes: notePayload });
+    
+    // Complete current session with label
+    try {
+      await sessionManager.completeSession(selectedLabel);
+      console.log('[Session] Session completed successfully');
+      if (notesTextarea) {
+        notesTextarea.value = '';
+      }
+    } catch (error) {
+      console.error('[Session] Failed to complete session:', error);
+      // Continue anyway - we still want to advance to next slide
+    }
+    
+    // Move to next slide
+    const nextSlide = await slideQueue.nextSlide();
+    updateProgressDisplay();
+    
+    // Reset label selection
+    currentLabel = null;
+    
+    if (nextSlide) {
+      // Load the new slide
+      console.log(`[Queue] Loading next slide: ${nextSlide.slide_id}`);
+      await loadSlide(nextSlide.slide_id);
+      
+      // Re-enable button after slide loads
+      btnConfirm.disabled = false;
+    } else {
+      // All slides completed
+      console.log('[Queue] All slides completed!');
+      showStudyComplete();
+      // Keep button disabled since study is complete
+    }
+  });
   
-  const direction = keyMap[event.key];
-  
-  if (direction) {
-    event.preventDefault(); // Prevent default browser scroll behavior
-    panByArrow(direction);
-  }
-});
+  confirmHandlerAttached = true;
+}
 
-// ===== MOUSE WHEEL ZOOM =====
-// Enable discrete zoom in/out with mouse wheel
-// Zoom IN centers on cursor (like click), zoom OUT keeps current center
+// ===== DISABLE MOUSE WHEEL ZOOM =====
+// Block mouse wheel from doing anything on the viewer
 const viewerElement = document.getElementById('viewer');
 if (viewerElement) {
   viewerElement.addEventListener('wheel', (event: WheelEvent) => {
-    if (!manifest || !gridState) return;
-    
-    event.preventDefault(); // Prevent default scroll behavior
-    
-    // Check if we're currently in "fit" mode
-    const magInfo = getCurrentMagnificationAndLevel(viewer, manifest);
-    const currentMag = magInfo ? magInfo.mag : null; // null = fit mode
-    
-    // Determine zoom direction: wheel down = zoom out, wheel up = zoom in
-    const zoomOut = event.deltaY > 0;
-    
-    let newMag: number | null;
-    
-    if (zoomOut) {
-      // Zoom OUT
-      newMag = currentMag !== null ? getPreviousZoomLevel(currentMag) : null;
-      
-      if (newMag === currentMag || (currentMag === null && newMag === null)) {
-        console.log('Already at minimum zoom (fit)');
-        return;
-      }
-    } else {
-      // Zoom IN
-      newMag = getNextZoomLevel(currentMag);
-      
-      if (newMag === null || newMag === currentMag) {
-        console.log('Already at maximum zoom (40×)');
-        return;
-      }
-    }
-    
-    // Get target center
-    let targetCenter;
-    
-    if (!zoomOut && newMag !== null) {
-      // Zoom IN: Get cursor position in level-0 coordinates
-      const rect = viewerElement.getBoundingClientRect();
-      const pixelX = event.clientX - rect.left;
-      const pixelY = event.clientY - rect.top;
-      const viewportPoint = viewer.viewport.pointFromPixel(new OpenSeadragon.Point(pixelX, pixelY));
-      const imagePoint = viewer.viewport.viewportToImageCoordinates(viewportPoint);
-      
-      targetCenter = { x: imagePoint.x, y: imagePoint.y };
-      
-      console.log(`=== MOUSE WHEEL ZOOM IN ===`);
-      console.log(`${currentMag || 'fit'}× → ${newMag}×`);
-      console.log(`Centering on cursor: (${targetCenter.x.toFixed(0)}, ${targetCenter.y.toFixed(0)})`);
-    } else {
-      // Zoom OUT: Keep current center
-      targetCenter = getCurrentCenter();
-      
-      console.log(`=== MOUSE WHEEL ZOOM OUT ===`);
-      console.log(`${currentMag}× → ${newMag || 'fit'}×`);
-      console.log(`Keeping center: (${targetCenter.x.toFixed(0)}, ${targetCenter.y.toFixed(0)})`);
-    }
-    
-    // Zoom to target level
-    if (newMag === null) {
-      // Zoom to fit (home zoom)
-      viewer.viewport.goHome(true);
-    } else {
-      // Zoom to specific magnification using exact DZI level
-      const newDziLevel = manifest.magnification_levels[`${newMag}x` as '2.5x' | '5x' | '10x' | '20x' | '40x'];
-      const zoomValue = getZoomForDziLevel(newDziLevel, viewer);
-      viewer.viewport.zoomTo(zoomValue, undefined, true);
-      
-      // Pan to target center
-      const centerViewport = viewer.viewport.imageToViewportCoordinates(targetCenter.x, targetCenter.y);
-      viewer.viewport.panTo(centerViewport, true);
-    }
-    
-    console.log('===========================');
-    
-    // Log zoom event (after grid state updates)
-    setTimeout(() => logEvent('zoom_step'), 50);
+    event.preventDefault(); // Block default scroll/zoom behavior
+  }, { passive: false });
+  
+  // ===== BLOCK RIGHT-CLICK CONTEXT MENU =====
+  viewerElement.addEventListener('contextmenu', (event: MouseEvent) => {
+    event.preventDefault(); // Prevent default context menu
   });
 }
 
-// ===== CLICK-TO-ZOOM LADDER =====
+// ===== LEFT-CLICK: ZOOM IN =====
 /**
- * Handle click on viewer: recenter to nearest patch center and step zoom.
- * Edge cells are filtered (not clickable).
+ * Handle left-click on viewer: recenter on click position and step zoom IN.
  * Ladder: fit → 2.5× → 5× → 10× → 20× → 40×
- * At max zoom (40×), clicking does nothing (no recenter, no zoom).
+ * At max zoom (40×), clicking does nothing.
  */
 viewer.addHandler('canvas-click', (event: any) => {
-  if (!manifest || !gridState) return;
+  if (!manifest || !viewerState) return;
   
   // Check if we're in "fit" mode
   const magInfo = getCurrentMagnificationAndLevel(viewer, manifest);
   const currentMag = magInfo ? magInfo.mag : null;
   
-  // At max zoom (40×), clicking does NOTHING (no recenter, no zoom)
+  // At max zoom (40×), clicking does NOTHING
   if (currentMag === 40) {
-    console.log('Already at max zoom (40×) - clicking disabled');
+    console.log('Already at max zoom (40×) - left-click disabled');
     return;
   }
   
@@ -922,37 +1233,28 @@ viewer.addHandler('canvas-click', (event: any) => {
   // Convert to level-0 image coordinates
   const imagePoint = viewer.viewport.viewportToImageCoordinates(viewportPoint);
   
-  // Get grid indices for the CURRENT magnification (use 2.5× grid if in fit mode)
-  const [i, j] = indexOf(imagePoint.x, imagePoint.y, gridState.cellSize);
-  
-  // Check if this is an edge cell - edge cells are not clickable
-  const isEdge = isEdgeCell(i, j, manifest.level0_width, manifest.level0_height, gridState.cellSize);
-  
-  if (isEdge) {
-    console.log(`Clicked edge cell (${i}, ${j}) - not clickable`);
+  // Simple bounds check - can't click outside the slide
+  if (imagePoint.x < 0 || imagePoint.x >= manifest.level0_width ||
+      imagePoint.y < 0 || imagePoint.y >= manifest.level0_height) {
+    console.log('Click outside slide bounds - ignoring');
     return;
   }
   
-  // Get the EXACT click position (not cell center)
-  // This ensures artifacts the user clicks on stay centered after zoom
+  // Get the EXACT click position
   const clickX = imagePoint.x;
   const clickY = imagePoint.y;
   
-  console.log('=== CLICK-TO-ZOOM ===');
-  if (currentMag === null) {
-    console.log(`Clicked cell: (${i}, ${j}) at fit mode`);
-  } else {
-    console.log(`Clicked cell: (${i}, ${j}) at ${currentMag}× (DZI level ${gridState.currentDziLevel})`);
-  }
+  console.log('=== LEFT-CLICK: ZOOM IN ===');
+  console.log(`Click at ${currentMag || 'fit'}× (DZI level ${viewerState.currentDziLevel})`);
   console.log(`Click position (level-0): (${clickX.toFixed(0)}, ${clickY.toFixed(0)})`);
   
   // Save current state to history before navigating
   pushHistory();
   
-  // Log cell_click event (before navigation)
-  logEvent('cell_click', { cellI: i, cellJ: j });
+  // Log cell_click event with exact click coordinates (before navigation)
+  logEvent('cell_click', { clickX: clickX, clickY: clickY });
   
-  // Recenter viewport to EXACT click position (not cell center)
+  // Recenter viewport to EXACT click position
   const centerViewport = viewer.viewport.imageToViewportCoordinates(clickX, clickY);
   viewer.viewport.panTo(centerViewport, true);
   
@@ -971,21 +1273,85 @@ viewer.addHandler('canvas-click', (event: any) => {
     
     console.log(`Zoomed: ${currentMag || 'fit'}× → ${nextZoom}× (DZI ${nextDziLevel})`);
     
-    // Log zoom_step event (after zoom completes and grid state updates)
-    setTimeout(() => logEvent('zoom_step'), 50);
+    // Log zoom_step event
+    setTimeout(() => logEvent('zoom_step'), 10);
   }
   
-  console.log('====================');
+  // Update magnification display
+  setTimeout(() => updateMagnificationDisplay(), 50);
+  
+  console.log('===========================');
 });
 
-// ===== CURSOR STYLE FOR EDGE CELLS =====
-// Update cursor style based on whether cell is clickable
+// ===== RIGHT-CLICK: ZOOM OUT =====
+/**
+ * Handle right-click on viewer: zoom OUT one level, keeping current center.
+ * Does NOT recenter on click position - stays on current view center.
+ * At fit level, right-click does nothing.
+ */
+viewer.addHandler('canvas-nonprimary-press', (event: any) => {
+  // Only handle right-click (button 2)
+  if (event.button !== 2) return;
+  if (!manifest || !viewerState) return;
+  
+  // Check if we're in "fit" mode
+  const magInfo = getCurrentMagnificationAndLevel(viewer, manifest);
+  const currentMag = magInfo ? magInfo.mag : null;
+  
+  // At fit level, right-click does nothing
+  if (currentMag === null) {
+    console.log('Already at fit level - right-click disabled');
+    return;
+  }
+  
+  // Get previous zoom level
+  const prevZoom = getPreviousZoomLevel(currentMag);
+  
+  console.log('=== RIGHT-CLICK: ZOOM OUT ===');
+  console.log(`Current: ${currentMag}× → Target: ${prevZoom || 'fit'}×`);
+  
+  // Keep current center (don't recenter on click position)
+  const currentCenter = getCurrentCenter();
+  console.log(`Keeping center: (${currentCenter.x.toFixed(0)}, ${currentCenter.y.toFixed(0)})`);
+  
+  // Save current state to history before navigating (so Back can undo this)
+  pushHistory();
+  
+  // Log zoom_step event (zooming out is still a zoom step)
+  logEvent('zoom_step');
+  
+  if (prevZoom === null) {
+    // Zoom to fit: use fitBounds to ensure entire slide is visible
+    const imageBounds = viewer.world.getItemAt(0).getBounds();
+    viewer.viewport.fitBounds(imageBounds, false);
+    console.log('Zoomed out to fit');
+  } else {
+    // Zoom to previous magnification level
+    const prevDziLevel = manifest.magnification_levels[`${prevZoom}x` as '2.5x' | '5x' | '10x' | '20x' | '40x'];
+    const zoomValue = getZoomForDziLevel(prevDziLevel, viewer);
+    viewer.viewport.zoomTo(zoomValue, undefined, true);
+    
+    // Keep the same center
+    const centerViewport = viewer.viewport.imageToViewportCoordinates(currentCenter.x, currentCenter.y);
+    viewer.viewport.panTo(centerViewport, true);
+    
+    console.log(`Zoomed out: ${currentMag}× → ${prevZoom}× (DZI ${prevDziLevel})`);
+  }
+  
+  // Update magnification display
+  setTimeout(() => updateMagnificationDisplay(), 50);
+  
+  console.log('=============================');
+});
+
+// ===== CURSOR STYLE =====
+// Update cursor style based on whether clicking is allowed
 if (viewerElement) {
   viewerElement.addEventListener('mousemove', (event: MouseEvent) => {
-    if (!manifest || !gridState) return;
+    if (!manifest || !viewerState) return;
     
     // At max zoom (40×), show default cursor (clicking disabled)
-    if (gridState.currentZoomMag === 40) {
+    if (viewerState.currentZoomMag === 40) {
       viewerElement.style.cursor = 'default';
       return;
     }
@@ -1008,13 +1374,106 @@ if (viewerElement) {
       return;
     }
     
-    // Get grid indices
-    const [i, j] = indexOf(imagePoint.x, imagePoint.y, gridState.cellSize);
-    
-    // Check if edge cell
-    const isEdge = isEdgeCell(i, j, manifest.level0_width, manifest.level0_height, gridState.cellSize);
-    
-    // Update cursor style: pointer for clickable cells, not-allowed for edge cells
-    viewerElement.style.cursor = isEdge ? 'not-allowed' : 'pointer';
+    // Point is within slide bounds - show pointer cursor
+    viewerElement.style.cursor = 'pointer';
   });
 }
+
+// ===== BUFFER FLUSH SAFEGUARDS =====
+window.addEventListener('beforeunload', () => {
+  sessionManager.flushBufferedEventsSync();
+});
+
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'hidden') {
+    sessionManager.flushBufferedEventsSync();
+  }
+});
+  
+  return viewer;
+}
+
+// ===== LOGIN/LOGOUT EVENT LISTENERS =====
+const loginFormElement = document.getElementById('login-form-element') as HTMLFormElement;
+loginFormElement?.addEventListener('submit', async (event) => {
+  event.preventDefault();
+  
+  const usernameInput = document.getElementById('username') as HTMLInputElement;
+  const passwordInput = document.getElementById('password') as HTMLInputElement;
+  const loginBtn = document.getElementById('login-btn') as HTMLButtonElement;
+  
+  if (!usernameInput || !passwordInput) return;
+  
+  // Disable form during login
+  loginBtn.disabled = true;
+  
+  const success = await handleLogin(usernameInput.value, passwordInput.value);
+  
+  if (success && currentUser) {
+    // Clear form
+    usernameInput.value = '';
+    passwordInput.value = '';
+    
+    // Role-based post-login setup
+    if (currentUser.role === 'admin') {
+      // Admin dashboard already initialized in handleLogin
+      console.log('[Auth] Admin login complete, dashboard displayed');
+    } else {
+      // Pathologist - load slides and start viewer
+      await slideQueue.loadSlides(currentUser.id);
+      updateProgressDisplay();
+      
+      const firstSlide = slideQueue.getCurrentSlide();
+      if (firstSlide) {
+        console.log(`[Auth] Starting with first slide: ${firstSlide.slide_id}`);
+        await loadSlide(firstSlide.slide_id);
+      } else {
+        // All slides completed
+        console.log('[Auth] All slides completed!');
+        showStudyComplete();
+      }
+    }
+  } else {
+    // Re-enable form on failure
+    loginBtn.disabled = false;
+  }
+});
+
+const logoutBtn = document.getElementById('logout-btn') as HTMLButtonElement;
+logoutBtn?.addEventListener('click', handleLogout);
+
+// ===== INITIALIZATION =====
+// Check authentication on page load
+(async function init() {
+  console.log('[App] Initializing...');
+  
+  // Check if user is already authenticated
+  await initAuth();
+  
+  if (currentUser) {
+    // Role-based initialization
+    const user: User = currentUser; // Store in local variable for type narrowing
+    if (user.role === 'admin') {
+      // Admin dashboard already initialized in initAuth
+      console.log('[Auth] Admin authenticated, dashboard loaded');
+    } else {
+      // Pathologist viewer - load slides and start viewer
+      console.log('[Auth] Pathologist authenticated, loading viewer...');
+      await slideQueue.loadSlides(user.id);
+      updateProgressDisplay();
+      
+      const firstSlide = slideQueue.getCurrentSlide();
+      if (firstSlide) {
+        console.log(`[Auth] Starting with first slide: ${firstSlide.slide_id}`);
+        await loadSlide(firstSlide.slide_id);
+      } else {
+        // All slides completed
+        console.log('[Auth] All slides completed!');
+        showStudyComplete();
+      }
+    }
+  } else {
+    // Show login form (already handled by initAuth)
+    console.log('[Auth] Not authenticated, showing login...');
+  }
+})();

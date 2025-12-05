@@ -3,6 +3,9 @@ wsi_tiler.py - Convert WSI (SVS/NDPI/TIFF) to DeepZoom pyramid with alignment ma
 
 Usage:
     python -m src.tiler.wsi_tiler --input slide.svs --out tiles/slide_id --patch-px 256
+    
+Uses libvips for fast parallel tiling (5-10x faster than OpenSlide).
+Falls back to OpenSlide if libvips is not available.
 """
 
 import argparse
@@ -10,6 +13,15 @@ import sys
 from pathlib import Path
 from typing import Dict, Any
 
+# Try to import libvips (fast, parallel)
+try:
+    import pyvips
+    LIBVIPS_AVAILABLE = True
+except ImportError:
+    LIBVIPS_AVAILABLE = False
+    print("Warning: pyvips not available, falling back to OpenSlide (slower)")
+
+# Always import OpenSlide for metadata extraction
 try:
     import openslide
     from openslide.deepzoom import DeepZoomGenerator
@@ -122,20 +134,78 @@ def calculate_magnification_levels(dz: DeepZoomGenerator) -> Dict[str, int]:
     }
 
 
-def generate_tiles(
+def generate_tiles_libvips(
+    input_path: Path,
+    output_dir: Path,
+    tile_size: int,
+    quality: int
+) -> int:
+    """
+    Generate DeepZoom tiles using libvips (fast, parallel).
+    
+    Args:
+        input_path: Path to input WSI file
+        output_dir: Base directory for tiles
+        tile_size: Tile size in pixels
+        quality: JPEG quality (1-100)
+        
+    Returns:
+        Number of DZI levels created
+    """
+    print(f"\nGenerating tiles with libvips (parallel processing)...")
+    
+    # Load image with libvips
+    image = pyvips.Image.new_from_file(str(input_path), access='sequential')
+    
+    # Generate DeepZoom pyramid
+    # libvips automatically parallelizes this across CPU cores
+    image.dzsave(
+        str(output_dir / 'temp'),  # Base name (libvips adds _files suffix)
+        tile_size=tile_size,
+        overlap=0,
+        depth='onetile',
+        suffix=f'.jpeg[Q={quality}]',
+        background=0
+    )
+    
+    # libvips creates output_dir/temp_files/, we need to rename it
+    temp_dir = output_dir / 'temp_files'
+    if temp_dir.exists():
+        # Move all subdirectories to output_dir
+        for level_dir in temp_dir.iterdir():
+            target = output_dir / level_dir.name
+            if target.exists():
+                import shutil
+                shutil.rmtree(target)
+            level_dir.rename(target)
+        temp_dir.rmdir()
+        
+        # Remove the temp.dzi file
+        temp_dzi = output_dir / 'temp.dzi'
+        if temp_dzi.exists():
+            temp_dzi.unlink()
+    
+    # Count levels
+    level_count = len([d for d in output_dir.iterdir() if d.is_dir() and d.name.isdigit()])
+    
+    print(f"All tiles generated successfully! ({level_count} levels)")
+    return level_count
+
+
+def generate_tiles_openslide(
     dz: DeepZoomGenerator,
     output_dir: Path,
     quality: int
 ) -> None:
     """
-    Generate all DeepZoom tiles and save as JPEG.
+    Generate all DeepZoom tiles using OpenSlide (slower, fallback).
     
     Args:
         dz: DeepZoomGenerator object
         output_dir: Base directory for tiles
         quality: JPEG quality (1-100)
     """
-    print(f"\nGenerating tiles...")
+    print(f"\nGenerating tiles with OpenSlide (single-threaded)...")
     print(f"Total levels: {dz.level_count}")
     
     for level in range(dz.level_count):
@@ -176,7 +246,8 @@ def main():
     output_dir.mkdir(parents=True, exist_ok=True)
     
     print("=" * 80)
-    print("WSI TILER - OpenSlide DeepZoom Generator")
+    tiler_backend = "libvips (fast, parallel)" if LIBVIPS_AVAILABLE else "OpenSlide (single-threaded)"
+    print(f"WSI TILER - {tiler_backend}")
     print("=" * 80)
     print(f"Input:     {input_path}")
     print(f"Output:    {output_dir}")
@@ -220,8 +291,14 @@ def main():
         cols, rows = dz.level_tiles[dzi_level]
         print(f"  {mag:4s} -> DZI level {dzi_level:2d} ({cols:4d} x {rows:4d} tiles)")
     
-    # Generate tiles
-    generate_tiles(dz, output_dir, args.quality)
+    # Generate tiles (use libvips if available, otherwise OpenSlide)
+    if LIBVIPS_AVAILABLE:
+        level_count = generate_tiles_libvips(input_path, output_dir, args.tile_size, args.quality)
+        # Verify level count matches
+        if level_count != dz.level_count:
+            print(f"Warning: libvips created {level_count} levels, expected {dz.level_count}")
+    else:
+        generate_tiles_openslide(dz, output_dir, args.quality)
     
     # Close slide (no longer needed)
     slide.close()

@@ -4,6 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>WSI Viewer - Pathologist Study</title>
+  <link rel="stylesheet" href="/src/admin/admin.css">
   <style>
     body {
       margin: 0;
@@ -11,50 +12,223 @@
       font-family: Arial, sans-serif;
       overflow: hidden;
     }
+    
+    /* Login container */
+    #login-container {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      width: 100vw;
+      height: 100vh;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    }
+    
+    #login-container.hidden {
+      display: none;
+    }
+    
+    #login-form {
+      background: white;
+      padding: 40px;
+      border-radius: 12px;
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+      width: 360px;
+      max-width: 90%;
+    }
+    
+    #login-form h2 {
+      margin: 0 0 24px 0;
+      color: #333;
+      text-align: center;
+      font-size: 24px;
+    }
+    
+    .form-group {
+      margin-bottom: 20px;
+    }
+    
+    .form-group label {
+      display: block;
+      margin-bottom: 6px;
+      color: #555;
+      font-size: 14px;
+      font-weight: bold;
+    }
+    
+    .form-group input {
+      width: 100%;
+      padding: 12px;
+      border: 1px solid #ddd;
+      border-radius: 6px;
+      font-size: 14px;
+      box-sizing: border-box;
+      transition: border-color 0.2s;
+    }
+    
+    .form-group input:focus {
+      outline: none;
+      border-color: #667eea;
+    }
+    
+    #login-btn {
+      width: 100%;
+      padding: 14px;
+      background: #667eea;
+      color: white;
+      border: none;
+      border-radius: 6px;
+      font-size: 16px;
+      font-weight: bold;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+    
+    #login-btn:hover {
+      background: #5568d3;
+    }
+    
+    #login-btn:disabled {
+      background: #ccc;
+      cursor: not-allowed;
+    }
+    
+    #login-error {
+      color: #dc3545;
+      font-size: 14px;
+      margin-top: 12px;
+      text-align: center;
+      display: none;
+    }
+    
+    #login-error.visible {
+      display: block;
+    }
+    
+    /* App container (viewer + sidebar) */
+    #app-container {
+      display: none;
+      width: 100vw;
+      height: 100vh;
+    }
+    
+    #app-container.visible {
+      display: block;
+    }
+    
     #viewer {
-      width: calc(100vw - 320px);
+      width: calc(100vw - clamp(200px, 18vw, 280px));
       height: 100vh;
       background: #000;
     }
-    /* Right sidebar - fixed, doesn't overlap image */
+    /* Right sidebar - fixed, dynamically sized to viewport */
     #right-sidebar {
       position: fixed;
       right: 0;
       top: 0;
-      width: 320px;
+      width: clamp(200px, 18vw, 280px); /* Scales with viewport width */
       height: 100vh;
       background: rgba(255, 255, 255, 0.98);
       box-shadow: -2px 0 12px rgba(0, 0, 0, 0.2);
       z-index: 1000;
-      overflow-y: auto;
-      padding: 20px;
+      display: flex;
+      flex-direction: column;
       box-sizing: border-box;
+      font-size: clamp(11px, 1.4vh, 14px); /* Scales with viewport height */
     }
     
-    #right-sidebar h3 {
-      margin: 0 0 15px 0;
-      font-size: 18px;
+    /* Sidebar header section (progress) */
+    #sidebar-header {
+      flex-shrink: 0;
+      background: rgba(255, 255, 255, 0.98);
+      padding: clamp(6px, 1vh, 12px) clamp(8px, 1vw, 15px);
+      border-bottom: 1px solid #ddd;
+    }
+    
+    #progress-info {
+      font-size: inherit;
+      color: #333;
+      margin-bottom: clamp(2px, 0.5vh, 6px);
+    }
+    
+    #progress-info strong {
+      font-weight: bold;
+    }
+    
+    #progress-bar-container {
+      width: 100%;
+      height: clamp(3px, 0.5vh, 6px);
+      background: #e0e0e0;
+      border-radius: 2px;
+      overflow: hidden;
+    }
+    
+    #progress-bar {
+      height: 100%;
+      background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
+      transition: width 0.3s ease;
+      width: 0%;
+    }
+    
+    /* Content area - flex to distribute space evenly */
+    #sidebar-content {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      padding: clamp(8px, 1vh, 15px) clamp(8px, 1vw, 15px);
+      min-height: 0;
+      overflow-y: auto;
+    }
+    
+    #sidebar-content h3 {
+      margin: 0 0 clamp(4px, 0.6vh, 10px) 0;
+      font-size: clamp(12px, 1.5vh, 15px);
       font-weight: bold;
       color: #333;
-      border-bottom: 2px solid #ddd;
-      padding-bottom: 10px;
+      border-bottom: 1px solid #ddd;
+      padding-bottom: clamp(2px, 0.4vh, 8px);
     }
     
-    #right-sidebar section {
-      margin-bottom: 30px;
+    #sidebar-content section {
+      margin-bottom: clamp(8px, 1.2vh, 20px);
+    }
+    
+    /* Sidebar footer (logout) */
+    #sidebar-footer {
+      flex-shrink: 0;
+      background: rgba(255, 255, 255, 0.98);
+      padding: clamp(6px, 1vh, 12px) clamp(8px, 1vw, 15px);
+      border-top: 1px solid #ddd;
+    }
+    
+    #logout-btn {
+      width: 100%;
+      padding: clamp(6px, 1vh, 12px);
+      background: #dc3545;
+      color: white;
+      border: none;
+      border-radius: 4px;
+      font-size: inherit;
+      font-weight: bold;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+    
+    #logout-btn:hover {
+      background: #c82333;
     }
     
     /* Arrow buttons at screen edges */
     .arrow-btn {
       position: absolute;
-      width: 50px;
-      height: 50px;
-      font-size: 24px;
+      width: 44px;
+      height: 44px;
+      font-size: 20px;
       cursor: pointer;
       border: 2px solid rgba(255, 255, 255, 0.8);
       background: rgba(0, 0, 0, 0.5);
       color: white;
-      border-radius: 8px;
+      border-radius: 6px;
       z-index: 900;
       transition: all 0.2s ease;
     }
@@ -72,28 +246,27 @@
     }
     
     /* Position each arrow at screen edges */
-    /* Up/down arrows centered on viewer (not screen) */
-    /* Viewer is calc(100vw - 320px), so center is at (100vw - 320px) / 2 */
+    /* Viewer width = 100vw - sidebar, center arrows on viewer */
     #btn-up {
-      top: 20px;
-      left: calc((100vw - 320px) / 2);
+      top: 15px;
+      left: calc((100vw - clamp(200px, 18vw, 280px)) / 2);
       transform: translateX(-50%);
     }
     
     #btn-down {
-      bottom: 20px;
-      left: calc((100vw - 320px) / 2);
+      bottom: 15px;
+      left: calc((100vw - clamp(200px, 18vw, 280px)) / 2);
       transform: translateX(-50%);
     }
     
     #btn-left {
-      left: 20px;
+      left: 15px;
       top: 50%;
       transform: translateY(-50%);
     }
     
     #btn-right {
-      right: 340px; /* Position before sidebar (320px + 20px margin) */
+      right: calc(clamp(200px, 18vw, 280px) + 20px);
       top: 50%;
       transform: translateY(-50%);
     }
@@ -110,31 +283,31 @@
     /* Label selection */
     .label-option {
       display: block;
-      margin: 10px 0;
+      margin: clamp(2px, 0.4vh, 7px) 0;
       cursor: pointer;
       user-select: none;
     }
     
     .label-option input[type="radio"] {
-      margin-right: 8px;
+      margin-right: 5px;
       cursor: pointer;
     }
     
     .label-option label {
       cursor: pointer;
-      font-size: 14px;
+      font-size: inherit;
       color: #333;
     }
     
     /* Notes textarea */
     #notes-textarea {
       width: 100%;
-      min-height: 80px;
-      padding: 10px;
+      min-height: clamp(40px, 6vh, 80px);
+      padding: clamp(4px, 0.6vh, 10px);
       border: 1px solid #ccc;
-      border-radius: 6px;
+      border-radius: 4px;
       font-family: Arial, sans-serif;
-      font-size: 14px;
+      font-size: inherit;
       resize: vertical;
       box-sizing: border-box;
     }
@@ -144,16 +317,37 @@
       border-color: #007bff;
     }
     
+    /* Magnification display */
+    #magnification-section {
+      margin-bottom: clamp(6px, 1vh, 12px);
+    }
+    
+    #magnification-line {
+      font-size: clamp(12px, 1.6vh, 16px);
+      color: #333;
+    }
+    
+    #magnification-display {
+      font-weight: bold;
+      color: #667eea;
+    }
+    
+    #zoom-hint {
+      color: #888;
+      font-size: clamp(9px, 1.2vh, 12px);
+      margin-top: clamp(2px, 0.3vh, 6px);
+    }
+    
     /* Debug info */
     #debug-info {
-      font-size: 12px;
+      font-size: 11px;
       font-family: monospace;
       color: #555;
-      line-height: 1.8;
+      line-height: 1.6;
     }
     
     #debug-info div {
-      margin: 5px 0;
+      margin: 4px 0;
     }
     
     #debug-info strong {
@@ -163,19 +357,19 @@
     /* Sidebar buttons */
     .sidebar-btn {
       width: 100%;
-      padding: 12px;
-      margin: 8px 0;
-      font-size: 14px;
+      padding: clamp(5px, 0.8vh, 12px);
+      margin: clamp(2px, 0.4vh, 6px) 0;
+      font-size: inherit;
       font-weight: bold;
       cursor: pointer;
       border: none;
-      border-radius: 6px;
+      border-radius: 4px;
       transition: all 0.2s ease;
     }
     
     .sidebar-btn:hover:not(:disabled) {
       transform: translateY(-1px);
-      box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
+      box-shadow: 0 2px 4px rgba(0, 0, 0, 0.15);
     }
     
     .sidebar-btn:disabled {
@@ -209,70 +403,261 @@
     #btn-reset:hover {
       background: #e0a800;
     }
-    
-    #btn-export {
-      background: #007bff;
-      color: white;
-    }
-    
-    #btn-export:hover {
-      background: #0056b3;
-    }
   </style>
 </head>
 <body>
-  <div id="viewer"></div>
+  <!-- Login screen -->
+  <div id="login-container">
+    <div id="login-form">
+      <h2>WSI Viewer Login</h2>
+      <form id="login-form-element" method="POST" action="javascript:void(0);">
+        <div class="form-group">
+          <label for="username">Username</label>
+          <input type="text" id="username" name="username" required autocomplete="username">
+        </div>
+        <div class="form-group">
+          <label for="password">Password</label>
+          <input type="password" id="password" name="password" required autocomplete="current-password">
+        </div>
+        <button type="submit" id="login-btn">Login</button>
+        <div id="login-error"></div>
+      </form>
+    </div>
+  </div>
   
-  <!-- Arrow buttons at screen edges -->
-  <button id="btn-up" class="arrow-btn" disabled title="Pan Up (W / ↑)">↑</button>
-  <button id="btn-down" class="arrow-btn" disabled title="Pan Down (S / ↓)">↓</button>
-  <button id="btn-left" class="arrow-btn" disabled title="Pan Left (A / ←)">←</button>
-  <button id="btn-right" class="arrow-btn" disabled title="Pan Right (D / →)">→</button>
+  <!-- Main app (hidden until authenticated) -->
+  <div id="app-container">
+    <div id="viewer"></div>
+    
+    <!-- Arrow buttons at screen edges -->
+    <button id="btn-up" class="arrow-btn" disabled title="Pan Up">↑</button>
+    <button id="btn-down" class="arrow-btn" disabled title="Pan Down">↓</button>
+    <button id="btn-left" class="arrow-btn" disabled title="Pan Left">←</button>
+    <button id="btn-right" class="arrow-btn" disabled title="Pan Right">→</button>
+    
+    <!-- Right sidebar with all controls -->
+    <div id="right-sidebar">
+      <!-- Header: Progress (sticky top) -->
+      <div id="sidebar-header">
+        <div id="progress-info">
+          <strong>Progress:</strong> <span id="progress-display">-</span>
+        </div>
+        <div id="progress-bar-container">
+          <div id="progress-bar"></div>
+        </div>
+      </div>
+      
+      <!-- Scrollable content -->
+      <div id="sidebar-content">
+        <!-- Diagnosis section -->
+        <section>
+          <h3>Diagnosis</h3>
+          <div class="label-option">
+            <input type="radio" id="label-normal" name="diagnosis" value="normal">
+            <label for="label-normal">Normal</label>
+          </div>
+          <div class="label-option">
+            <input type="radio" id="label-benign" name="diagnosis" value="benign">
+            <label for="label-benign">Benign lesion</label>
+          </div>
+          <div class="label-option">
+            <input type="radio" id="label-malignant" name="diagnosis" value="malignant">
+            <label for="label-malignant">Malignant</label>
+          </div>
+          <button id="btn-confirm" class="sidebar-btn">Confirm & Next</button>
+        </section>
+        
+        <!-- Notes section -->
+        <section>
+          <h3>Notes</h3>
+          <textarea id="notes-textarea" placeholder="Add optional notes here..."></textarea>
+        </section>
+        
+        <!-- Magnification display -->
+        <section id="magnification-section">
+          <div id="magnification-line">
+            <strong>Magnification:</strong> <span id="magnification-display">Fit to screen</span>
+          </div>
+          <div id="zoom-hint">Left-click in, right-click out</div>
+        </section>
+        
+        <!-- Controls section -->
+        <section>
+          <h3>Controls</h3>
+          <button id="btn-back" class="sidebar-btn" disabled>← Back</button>
+          <button id="btn-reset" class="sidebar-btn">↺ Reset</button>
+        </section>
+        
+        <!-- Debug info section (admin only) -->
+        <section id="debug-section" style="display: none;">
+          <h3>Info</h3>
+          <div id="debug-info">
+            <div><strong>Zoom:</strong> <span id="current-zoom">Loading...</span></div>
+            <div><strong>Fits at 5×:</strong> <span id="fit-status">?</span></div>
+            <div><strong>Start level:</strong> <span id="start-level">?</span></div>
+            <div><strong>Grid:</strong> <span id="grid-dims">?</span></div>
+          </div>
+        </section>
+      </div>
+      
+      <!-- Footer: Logout button (sticky bottom) -->
+      <div id="sidebar-footer">
+        <button id="logout-btn">Logout</button>
+      </div>
+    </div>
+  </div>
   
-  <!-- Right sidebar with all controls -->
-  <div id="right-sidebar">
-    <!-- Diagnosis section -->
-    <section>
-      <h3>Diagnosis</h3>
-      <div class="label-option">
-        <input type="radio" id="label-normal" name="diagnosis" value="normal">
-        <label for="label-normal">Normal</label>
+  <!-- Admin Dashboard (hidden until admin authenticates) -->
+  <div id="admin-dashboard" style="display: none;">
+    <!-- Dashboard Header -->
+    <div id="admin-header">
+      <div id="admin-header-left">
+        <h1>Admin Dashboard</h1>
+        <p>Pathologist User Study - Progress Monitoring</p>
       </div>
-      <div class="label-option">
-        <input type="radio" id="label-benign" name="diagnosis" value="benign">
-        <label for="label-benign">Benign lesion</label>
+      <div id="admin-header-right">
+        <span id="admin-username"></span>
+        <button id="admin-logout-btn">Logout</button>
       </div>
-      <div class="label-option">
-        <input type="radio" id="label-malignant" name="diagnosis" value="malignant">
-        <label for="label-malignant">Malignant</label>
-      </div>
-      <button id="btn-confirm" class="sidebar-btn">Confirm & Next</button>
-    </section>
+    </div>
     
-    <!-- Notes section -->
-    <section>
-      <h3>Notes</h3>
-      <textarea id="notes-textarea" placeholder="Add optional notes here..."></textarea>
-    </section>
-    
-    <!-- Controls section -->
-    <section>
-      <h3>Controls</h3>
-      <button id="btn-back" class="sidebar-btn" disabled>← Back</button>
-      <button id="btn-reset" class="sidebar-btn">↺ Reset</button>
-      <button id="btn-export" class="sidebar-btn">💾 Export CSV</button>
-    </section>
-    
-    <!-- Debug info section -->
-    <section>
-      <h3>Info</h3>
-      <div id="debug-info">
-        <div><strong>Zoom:</strong> <span id="current-zoom">Loading...</span></div>
-        <div><strong>Fits at 5×:</strong> <span id="fit-status">?</span></div>
-        <div><strong>Start level:</strong> <span id="start-level">?</span></div>
-        <div><strong>Grid:</strong> <span id="grid-dims">?</span></div>
+    <!-- Stats Cards -->
+    <div id="admin-stats">
+      <div class="stat-card">
+        <div class="stat-number" id="stat-pathologists">-</div>
+        <div class="stat-label">Pathologists</div>
       </div>
-    </section>
+      <div class="stat-card">
+        <div class="stat-number" id="stat-slides">-</div>
+        <div class="stat-label">Total Slides</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-number" id="stat-sessions">-</div>
+        <div class="stat-label">Completed Sessions</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-number" id="stat-progress">-%</div>
+        <div class="stat-label">Overall Progress</div>
+      </div>
+    </div>
+    
+    <!-- User Table -->
+    <div id="admin-table-container">
+      <div id="admin-table-header">
+        <h2>Pathologist Progress</h2>
+        <button id="btn-refresh" class="admin-btn">↻ Refresh</button>
+      </div>
+      <table id="admin-table">
+        <thead>
+          <tr>
+            <th>Username</th>
+            <th>Sessions Started</th>
+            <th>Sessions Completed</th>
+            <th>Progress</th>
+          </tr>
+        </thead>
+        <tbody id="admin-table-body">
+          <!-- Rows populated by dashboard.ts -->
+        </tbody>
+      </table>
+    </div>
+    
+    <!-- Action Buttons -->
+    <div id="admin-actions">
+      <button id="btn-export-csv" class="admin-btn admin-btn-primary">⬇ Download CSV Export</button>
+    </div>
+    
+    <!-- Session Replay Section -->
+    <div id="admin-replay-section">
+      <div id="replay-section-header">
+        <h2>Session Replay</h2>
+        <p>Select a pathologist and slide to view their scanning path</p>
+      </div>
+      
+      <div id="replay-selection">
+        <div class="replay-select-group">
+          <label for="replay-user-select">Pathologist</label>
+          <select id="replay-user-select">
+            <option value="">Select a pathologist...</option>
+            <!-- Populated by dashboard.ts -->
+          </select>
+        </div>
+        
+        <div class="replay-select-group">
+          <label for="replay-session-select">Completed Session</label>
+          <select id="replay-session-select" disabled>
+            <option value="">Select a session...</option>
+            <!-- Populated when user is selected -->
+          </select>
+        </div>
+        
+        <button id="btn-load-replay" class="admin-btn admin-btn-primary" disabled>
+          ▶ Load Replay
+        </button>
+      </div>
+      
+      <div id="replay-session-info" style="display: none;">
+        <!-- Shows session metadata when selected -->
+      </div>
+    </div>
+  </div>
+  
+  <!-- Session Replay Full Page (hidden until replay is loaded) -->
+  <div id="replay-page" style="display: none;">
+    <!-- Replay Header -->
+    <div id="replay-header">
+      <div id="replay-header-left">
+        <button id="btn-back-to-dashboard" class="replay-back-btn">← Back to Dashboard</button>
+        <h1 id="replay-title">Session Replay</h1>
+      </div>
+      <div id="replay-header-right">
+        <span id="replay-session-meta"></span>
+      </div>
+    </div>
+    
+    <!-- Replay Viewer Container -->
+    <div id="replay-viewer-container">
+      <!-- OpenSeadragon viewer for replay -->
+      <div id="replay-osd-container"></div>
+      
+      <!-- Canvas overlay for drawing paths -->
+      <canvas id="replay-canvas-overlay"></canvas>
+      
+      <!-- Event info overlay -->
+      <div id="replay-event-info">
+        <div id="replay-event-type">-</div>
+        <div id="replay-event-time">-</div>
+        <div id="replay-event-zoom">-</div>
+        <div id="replay-event-position">-</div>
+      </div>
+    </div>
+    
+    <!-- Playback Controls -->
+    <div id="replay-controls">
+      <div id="replay-controls-left">
+        <button id="btn-replay-prev" class="replay-control-btn" title="Previous Event">⏮</button>
+        <button id="btn-replay-play" class="replay-control-btn replay-play-btn" title="Play/Pause">▶</button>
+        <button id="btn-replay-next" class="replay-control-btn" title="Next Event">⏭</button>
+      </div>
+      
+      <div id="replay-controls-center">
+        <div id="replay-scrubber-container">
+          <span id="replay-event-counter">0 / 0</span>
+          <input type="range" id="replay-scrubber" min="0" max="0" value="0">
+          <span id="replay-time-display">00:00 / 00:00</span>
+        </div>
+      </div>
+      
+      <div id="replay-controls-right">
+        <label for="replay-speed">Speed:</label>
+        <select id="replay-speed">
+          <option value="0.5">0.5×</option>
+          <option value="1" selected>1×</option>
+          <option value="2">2×</option>
+          <option value="5">5×</option>
+        </select>
+      </div>
+    </div>
   </div>
   
   <script type="module" src="/src/viewer/main.ts"></script>

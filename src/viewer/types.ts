@@ -27,15 +27,13 @@ export interface SlideManifest {
 }
 
 /**
- * Current viewer state for grid rendering
+ * Current viewer state for zoom tracking
+ * Note: Cell/grid fields removed - we now track exact click coordinates only
  */
-export interface GridState {
+export interface ViewerState {
   manifest: SlideManifest;
   currentZoomMag: number;  // Current magnification (2.5, 5, 10, 20, or 40)
   currentDziLevel: number;  // Current DZI level index being viewed
-  cellSize: number;  // Current cell size in level-0 pixels
-  numCols: number;  // Number of complete columns
-  numRows: number;  // Number of complete rows
 }
 
 /**
@@ -62,18 +60,19 @@ export type EventType =
   | 'slide_next';
 
 /**
- * Log event matching CSV schema from spec
+ * Log event - captures user interaction with full viewport state
+ * All coordinates are in level-0 (full resolution) pixel space
  */
 export interface LogEvent {
   ts_iso8601: string;       // ISO 8601 timestamp
   session_id: string;       // Session UUID
-  user_id: string;          // User identifier (placeholder in V1)
+  user_id: string;          // User identifier
   slide_id: string;         // Slide identifier from manifest
   event: EventType;         // Event type
   zoom_level: number;       // Current magnification (2.5, 5, 10, 20, or 40)
-  dzi_level: number;        // DZI pyramid level index (14, 15, 16, 17, or 18)
-  i: number | null;         // Grid cell column index (null if not applicable)
-  j: number | null;         // Grid cell row index (null if not applicable)
+  dzi_level: number;        // DZI pyramid level index
+  click_x0: number | null;  // Exact click X in level-0 coords (only for cell_click)
+  click_y0: number | null;  // Exact click Y in level-0 coords (only for cell_click)
   center_x0: number;        // Viewport center X in level-0 coords
   center_y0: number;        // Viewport center Y in level-0 coords
   vbx0: number;             // Viewport bottom-left X in level-0
@@ -83,10 +82,153 @@ export interface LogEvent {
   container_w: number;      // Container width in pixels
   container_h: number;      // Container height in pixels
   dpr: number;              // Device pixel ratio
-  patch_px: number;         // Patch size from manifest
-  tile_size: number;        // Tile size from manifest
-  alignment_ok: boolean;    // Alignment check status from manifest
   app_version: string;      // Application version
   label?: string;           // Label value (for label_select events)
+  notes?: string | null;    // Notes captured with slide completion
+}
+
+// ============================================================================
+// V2 Multi-User Types (Backend API Integration)
+// ============================================================================
+
+/**
+ * User information from authentication
+ */
+export interface User {
+  id: string;           // UUID from database
+  username: string;     // Username for login
+  role: string;         // 'pathologist' or 'admin'
+}
+
+/**
+ * Slide information from backend API
+ * Different from SlideManifest - this includes completion status
+ */
+export interface Slide {
+  id: string;                   // UUID from database
+  slide_id: string;             // Slide identifier (e.g., "test_slide")
+  s3_key_prefix: string;        // S3 path prefix for tiles
+  completed: boolean;           // Whether this user has completed this slide
+  session_id: string | null;    // Session UUID if started, null if not
+  label: string | null;         // Label if completed ('normal' | 'benign' | 'malignant')
+  started_at?: string | null;   // ISO timestamp when session started
+  completed_at?: string | null; // ISO timestamp when session completed
+}
+
+/**
+ * Session information from backend API
+ */
+export interface Session {
+  id: string;           // Session UUID
+  slide_id: string;     // Slide identifier
+  started_at: string;   // ISO timestamp when session started
+  completed_at?: string | null; // ISO timestamp when completed
+  label?: string | null;        // Label if completed
+}
+
+/**
+ * Generic API response wrapper for successful responses
+ */
+export interface APIResponse<T> {
+  data: T;
+}
+
+/**
+ * API error response
+ */
+export interface APIError {
+  error: string;
+}
+
+// ============================================================================
+// Admin Dashboard Types
+// ============================================================================
+
+/**
+ * User statistics for admin dashboard
+ */
+export interface UserStats {
+  id: string;              // User UUID
+  username: string;        // Username
+  total_sessions: number;  // Total sessions started
+  completed_sessions: number; // Completed sessions
+}
+
+/**
+ * Overall study progress statistics
+ */
+export interface ProgressStats {
+  total_pathologists: number;  // Total pathologist users
+  total_slides: number;         // Total slides in database
+  total_sessions: number;       // Total possible sessions (pathologists × slides)
+  completed_sessions: number;   // Total completed sessions
+}
+
+// ============================================================================
+// Session Replay Types
+// ============================================================================
+
+/**
+ * Completed session summary for admin dropdown
+ */
+export interface CompletedSession {
+  id: string;              // Session UUID
+  user_id: string;         // User UUID
+  username: string;        // Username for display
+  slide_id: string;        // Slide UUID
+  slide_name: string;      // Slide identifier (e.g., "test_slide")
+  started_at: string;      // ISO timestamp when session started
+  completed_at: string;    // ISO timestamp when completed
+  label: string;           // Final diagnosis ('normal' | 'benign' | 'malignant')
+  event_count: number;     // Total events in this session
+}
+
+/**
+ * Event data from backend for replay (matches LogEvent structure)
+ * All coordinates are in level-0 (full resolution) pixel space
+ */
+export interface ReplayEvent {
+  id: string;              // Event UUID
+  ts_iso8601: string;      // ISO 8601 timestamp
+  event: string;           // Event type
+  zoom_level: number | null;  // Magnification (2.5, 5, 10, 20, 40)
+  dzi_level: number | null;   // DZI pyramid level
+  click_x0: number | null;    // Exact click X in level-0 (only for cell_click)
+  click_y0: number | null;    // Exact click Y in level-0 (only for cell_click)
+  center_x0: number | null;   // Viewport center X (level-0)
+  center_y0: number | null;   // Viewport center Y (level-0)
+  vbx0: number | null;        // Viewport bottom-left X
+  vby0: number | null;        // Viewport bottom-left Y
+  vtx0: number | null;        // Viewport top-right X
+  vty0: number | null;        // Viewport top-right Y
+  container_w: number | null; // Container width
+  container_h: number | null; // Container height
+  dpr: number | null;         // Device pixel ratio
+  app_version: string | null;
+  label: string | null;
+  notes: string | null;
+}
+
+/**
+ * Session metadata for replay
+ */
+export interface SessionReplayMetadata {
+  id: string;              // Session UUID
+  user_id: string;         // User UUID
+  username: string;        // Username
+  slide_id: string;        // Slide UUID  
+  slide_name: string;      // Slide identifier
+  manifest: SlideManifest; // Full slide manifest for DZI loading
+  started_at: string;      // Session start time
+  completed_at: string;    // Session completion time
+  label: string;           // Final diagnosis
+}
+
+/**
+ * Complete replay data returned from backend
+ */
+export interface SessionReplayData {
+  session: SessionReplayMetadata;
+  events: ReplayEvent[];
 }
 
