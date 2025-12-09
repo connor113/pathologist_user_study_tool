@@ -409,6 +409,9 @@ function toCanvasCoords(x0: number, y0: number): ViewportPoint | null {
 
 /**
  * Draw current state (all events up to currentIndex)
+ * 
+ * Path segments are separated by reset events - each sequence of clicks
+ * between resets forms its own connected path.
  */
 function drawCurrentState(): void {
   if (!ctx || !canvas || !state.data) return;
@@ -417,20 +420,57 @@ function drawCurrentState(): void {
   ctx.clearRect(0, 0, canvas.width, canvas.height);
   
   const events = state.data.events;
-  const clickEvents = events.filter((e, i) => 
-    e.event === 'cell_click' && i <= state.currentIndex
-  );
   
-  if (clickEvents.length === 0) return;
+  // Find all click events up to current index, segmented by reset events
+  // Each segment is an array of click events that form a connected path
+  const clickSegments = getClickSegments(events, state.currentIndex);
   
-  // Draw path lines connecting clicks
-  drawPath(clickEvents);
-  
-  // Draw click markers
-  drawClickMarkers(clickEvents);
+  // Draw each segment as a separate path
+  clickSegments.forEach((segment, segmentIndex) => {
+    if (segment.length === 0) return;
+    
+    // Draw path lines connecting clicks in this segment
+    drawPath(segment, segmentIndex, clickSegments.length);
+    
+    // Draw click markers for this segment
+    drawClickMarkers(segment, segmentIndex, clickSegments.length);
+  });
   
   // Draw current viewport rectangle
   drawCurrentViewport();
+}
+
+/**
+ * Get click events segmented by reset events.
+ * Returns an array of segments, where each segment is an array of click events
+ * that occurred between reset/slide_load events.
+ */
+function getClickSegments(events: ReplayEvent[], maxIndex: number): ReplayEvent[][] {
+  const segments: ReplayEvent[][] = [];
+  let currentSegment: ReplayEvent[] = [];
+  
+  for (let i = 0; i <= maxIndex; i++) {
+    const event = events[i];
+    
+    // Reset and slide_load events start a new segment
+    if (event.event === 'reset' || event.event === 'slide_load') {
+      // Save current segment if it has clicks
+      if (currentSegment.length > 0) {
+        segments.push(currentSegment);
+      }
+      // Start new segment
+      currentSegment = [];
+    } else if (event.event === 'cell_click') {
+      currentSegment.push(event);
+    }
+  }
+  
+  // Don't forget the last segment
+  if (currentSegment.length > 0) {
+    segments.push(currentSegment);
+  }
+  
+  return segments;
 }
 
 /**
@@ -451,15 +491,25 @@ function getClickPosition(event: ReplayEvent): { x: number, y: number } | null {
 }
 
 /**
- * Draw path connecting click events
+ * Draw path connecting click events within a segment.
+ * Each segment gets a distinct base color to differentiate exploration sequences.
  */
-function drawPath(clickEvents: ReplayEvent[]): void {
+function drawPath(clickEvents: ReplayEvent[], segmentIndex: number, _totalSegments: number): void {
   if (!ctx || clickEvents.length < 2) return;
   
-  ctx.beginPath();
   ctx.lineWidth = 3;
   ctx.lineCap = 'round';
   ctx.lineJoin = 'round';
+  
+  // Use different base colors for different segments
+  // This helps visually distinguish separate exploration sequences
+  const segmentColors = [
+    { start: '#3498db', end: '#e74c3c' },  // Blue to red (segment 1)
+    { start: '#2ecc71', end: '#9b59b6' },  // Green to purple (segment 2)
+    { start: '#f39c12', end: '#e91e63' },  // Orange to pink (segment 3)
+    { start: '#00bcd4', end: '#ff5722' },  // Cyan to deep orange (segment 4)
+  ];
+  const colors = segmentColors[segmentIndex % segmentColors.length];
   
   for (let i = 0; i < clickEvents.length - 1; i++) {
     const from = clickEvents[i];
@@ -475,9 +525,9 @@ function drawPath(clickEvents: ReplayEvent[]): void {
     
     if (!fromPt || !toPt) continue;
     
-    // Color gradient from blue (early) to red (late)
-    const t = i / (clickEvents.length - 1);
-    const color = interpolateColor('#3498db', '#e74c3c', t);
+    // Color gradient within segment (early to late)
+    const t = clickEvents.length > 1 ? i / (clickEvents.length - 1) : 0;
+    const color = interpolateColor(colors.start, colors.end, t);
     
     ctx.strokeStyle = color;
     ctx.beginPath();
@@ -488,13 +538,26 @@ function drawPath(clickEvents: ReplayEvent[]): void {
 }
 
 /**
- * Draw click markers at each click position
+ * Draw click markers at each click position within a segment.
+ * Markers use the same color scheme as their segment's path.
  */
-function drawClickMarkers(clickEvents: ReplayEvent[]): void {
+function drawClickMarkers(clickEvents: ReplayEvent[], segmentIndex: number, totalSegments: number): void {
   if (!ctx) return;
   
   // Store reference to avoid null check issues in forEach
   const context = ctx;
+  
+  // Use same color scheme as drawPath
+  const segmentColors = [
+    { start: '#3498db', end: '#e74c3c' },  // Blue to red (segment 1)
+    { start: '#2ecc71', end: '#9b59b6' },  // Green to purple (segment 2)
+    { start: '#f39c12', end: '#e91e63' },  // Orange to pink (segment 3)
+    { start: '#00bcd4', end: '#ff5722' },  // Cyan to deep orange (segment 4)
+  ];
+  const colors = segmentColors[segmentIndex % segmentColors.length];
+  
+  // Check if this is the last segment (contains the most recent clicks)
+  const isLastSegment = segmentIndex === totalSegments - 1;
   
   clickEvents.forEach((event, i) => {
     const pos = getClickPosition(event);
@@ -503,9 +566,9 @@ function drawClickMarkers(clickEvents: ReplayEvent[]): void {
     const pt = toCanvasCoords(pos.x, pos.y);
     if (!pt) return;
     
-    // Color gradient
-    const t = i / Math.max(clickEvents.length - 1, 1);
-    const color = interpolateColor('#3498db', '#e74c3c', t);
+    // Color gradient within segment
+    const t = clickEvents.length > 1 ? i / (clickEvents.length - 1) : 0;
+    const color = interpolateColor(colors.start, colors.end, t);
     
     // Outer circle (filled)
     context.beginPath();
@@ -522,8 +585,8 @@ function drawClickMarkers(clickEvents: ReplayEvent[]): void {
     context.lineWidth = 2;
     context.stroke();
     
-    // Current event has larger marker
-    if (i === clickEvents.length - 1) {
+    // Highlight the most recent click in the last segment with a larger marker
+    if (isLastSegment && i === clickEvents.length - 1) {
       context.beginPath();
       context.arc(pt.x, pt.y, 14, 0, Math.PI * 2);
       context.strokeStyle = 'white';
@@ -855,6 +918,11 @@ async function playNextEvent(): Promise<void> {
 /**
  * Go to specific event index
  * Returns a promise that resolves when the viewport animation completes (if animated)
+ * 
+ * Key behavior for click/zoom separation:
+ * - cell_click: Shows the click marker at the click position WITHOUT changing viewport.
+ *   This displays the context in which the user made their click decision.
+ * - zoom_step: Applies the zoomed viewport state, showing the result of the zoom action.
  */
 async function goToEvent(index: number, animate: boolean): Promise<void> {
   if (!state.data || !viewer) return;
@@ -891,6 +959,16 @@ async function goToEvent(index: number, animate: boolean): Promise<void> {
     return;
   }
   
+  // cell_click: NO viewport change - just show the click marker
+  // The click event logs the viewport state BEFORE the click action.
+  // This shows the context (what was visible) when the user decided to click.
+  // The zoom will be shown on the subsequent zoom_step event.
+  if (eventType === 'cell_click') {
+    console.log('[Replay] cell_click - showing click marker without viewport change');
+    drawCurrentState();
+    return;
+  }
+  
   // label_select, slide_next: No viewport change
   if (eventType === 'label_select' || eventType === 'slide_next') {
     console.log('[Replay]', eventType, '- no viewport change');
@@ -898,8 +976,8 @@ async function goToEvent(index: number, animate: boolean): Promise<void> {
     return;
   }
   
-  // ALL other events (cell_click, zoom_step, arrow_pan, back_step): Apply viewport state
-  // Even cell_click has valid viewport data - it's the view AFTER the click action
+  // zoom_step, arrow_pan, back_step: Apply viewport state from the event
+  // These events log the viewport state AFTER the action completed.
   if (event.center_x0 !== null && event.center_y0 !== null) {
     
     try {
@@ -1099,7 +1177,32 @@ function updateEventInfo(event: ReplayEvent): void {
   }
   
   if (zoomEl) {
-    zoomEl.textContent = event.zoom_level ? `Zoom: ${event.zoom_level}×` : 'Zoom: -';
+    // Show "Fit to screen" for events where the entire slide is visible
+    // These events occur when the viewport is showing the whole slide:
+    // - app_start: Initial app load
+    // - slide_load: A new slide is loaded
+    // - reset: User clicked reset to return to full view
+    const fitEvents = ['app_start', 'slide_load', 'reset'];
+    
+    if (fitEvents.includes(event.event)) {
+      zoomEl.textContent = 'Magnification: Fit to screen';
+    } else if (event.event === 'cell_click') {
+      // cell_click is logged BEFORE zoom, so it shows the PREVIOUS viewport state.
+      // Check if this is the first click after a fit event (slide_load/reset/app_start)
+      // by looking at what magnification was displayed before this click.
+      const isFitClick = isClickAfterFitEvent(event);
+      if (isFitClick) {
+        zoomEl.textContent = 'Magnification: Fit to screen';
+      } else if (event.zoom_level) {
+        zoomEl.textContent = `Magnification: ${event.zoom_level}×`;
+      } else {
+        zoomEl.textContent = 'Magnification: -';
+      }
+    } else if (event.zoom_level) {
+      zoomEl.textContent = `Magnification: ${event.zoom_level}×`;
+    } else {
+      zoomEl.textContent = 'Magnification: -';
+    }
   }
   
   if (posEl) {
@@ -1113,6 +1216,48 @@ function updateEventInfo(event: ReplayEvent): void {
       posEl.textContent = 'Position: -';
     }
   }
+}
+
+/**
+ * Check if a cell_click event occurred immediately after a fit event (app_start, slide_load, reset).
+ * This helps determine if the magnification should show "Fit to screen" instead of a zoom level.
+ * 
+ * cell_click events log the viewport state BEFORE the click action, so if the previous
+ * viewport-changing event was a fit event, the click happened while viewing the entire slide.
+ */
+function isClickAfterFitEvent(clickEvent: ReplayEvent): boolean {
+  if (!state.data) return false;
+  
+  const events = state.data.events;
+  const clickIndex = events.indexOf(clickEvent);
+  
+  if (clickIndex <= 0) return true; // First event or not found, assume fit
+  
+  // Look backwards to find the last viewport-changing event before this click
+  // Skip events that don't change viewport: label_select, slide_next, cell_click (itself)
+  const nonViewportEvents = ['label_select', 'slide_next', 'cell_click'];
+  const fitEvents = ['app_start', 'slide_load', 'reset'];
+  
+  for (let i = clickIndex - 1; i >= 0; i--) {
+    const prevEvent = events[i];
+    
+    // Skip non-viewport-changing events
+    if (nonViewportEvents.includes(prevEvent.event)) {
+      continue;
+    }
+    
+    // Found a viewport-changing event
+    // If it's a fit event, this click happened at fit-to-screen
+    if (fitEvents.includes(prevEvent.event)) {
+      return true;
+    }
+    
+    // If it's a zoom/pan event, this click happened at a specific zoom level
+    return false;
+  }
+  
+  // No previous viewport event found, assume fit (start of session)
+  return true;
 }
 
 /**
