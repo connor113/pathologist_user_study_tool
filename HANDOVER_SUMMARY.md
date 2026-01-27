@@ -1,155 +1,201 @@
-# Pathologist User Study - Handover Summary
+# Pathologist User Study - Handover for T-0008
 
-**Last Updated:** December 2024  
-**Status:** V2 Core Features Complete (87.5%)  
-**Last Session:** Data integrity fixes - actual DZI level capture + viewing attempt tracking
-
----
-
-## ✅ Data Integrity Fixes (This Session)
-
-### Fix 1: Actual DZI Level Capture for Fit-to-Screen
-
-**Problem:** When "fit to screen", we captured placeholder values (2.5×, DZI 14) instead of the actual rendered level.
-
-**Solution:** Added `getActualDziLevel()` function that calculates the real DZI level from OpenSeadragon's current zoom:
-```typescript
-// Formula: DZI level = maxLevel + log2(imageZoom)
-const imageZoom = tiledImage.viewportToImageZoom(viewportZoom);
-const rawLevel = maxLevel + Math.log2(imageZoom);
-const dziLevel = Math.round(rawLevel);  // Clamped to valid range
-```
-
-Now ALL events capture the actual DZI level being rendered, not placeholders.
-
-### Fix 2: Viewing Attempt Tracking
-
-**Problem:** If user logs out and back in, all events merged into same session with no way to differentiate.
-
-**Solution:** Added `viewing_attempt` field:
-- Sessions table: `current_attempt` counter
-- Events table: `viewing_attempt` field (1 = first, 2+ = resumed)
-- When user starts session with existing events, attempt increments
-- CSV export includes `viewing_attempt` column
-
-**Database Migration:** `backend/src/db/migrations/004_add_viewing_attempt.sql`
-
-### Files Changed
-- `src/viewer/main.ts` - Added `getActualDziLevel()`, `getMagnificationFromDziLevel()`, updated `updateViewerState()`
-- `src/viewer/types.ts` - Added `viewing_attempt` to `LogEvent` and `ReplayEvent`
-- `src/viewer/SessionManager.ts` - Added `viewingAttempt` tracking
-- `src/viewer/api.ts` - Updated `startSession()` return type
-- `backend/src/routes/slides.ts` - Increment attempt on resume with existing events
-- `backend/src/routes/admin.ts` - Include `viewing_attempt` in CSV export and replay events
+**Date:** January 24, 2026  
+**Current Status:** Ready for T-0008 (Production Readiness)  
+**Completion:** 66.7% (8 of 12 tasks complete, 2 remaining for launch)
 
 ---
 
-## Remaining Data Integrity Notes
+## Quick Context
 
-### Session Replay Still Makes Some Inferences
-- Calls `goHome()` for fit events instead of using captured viewport bounds
-- Uses `isClickAfterFitEvent()` to detect clicks at fit level
+Web-based whole slide image (WSI) viewer for pathologist user studies. Captures detailed interaction data (clicks, pans, zooms) to train ML models linking scanning behavior to diagnostic decisions.
 
-### What IS Captured Correctly
-| Data | Status |
-|------|--------|
-| Click positions (`click_x0`, `click_y0`) | ✅ Level-0 coords |
-| Viewport bounds (`vbx0`, `vby0`, `vtx0`, `vty0`) | ✅ All events |
-| Viewport center (`center_x0`, `center_y0`) | ✅ Correct |
-| DZI level (`dzi_level`) | ✅ **NOW FIXED** - actual rendered level |
-| Zoom level (`zoom_level`) | ✅ **NOW FIXED** - calculated from DZI level |
-| Viewing attempt (`viewing_attempt`) | ✅ **NEW** - differentiates login sessions |
-| Timestamps | ✅ ISO 8601 |
-| Event types | ✅ Correct |
+**Architecture:**
+- Frontend: TypeScript + Vite + OpenSeadragon
+- Backend: Node.js + Express + PostgreSQL + JWT
+- Tiles: DeepZoom Image (DZI) format, 512×512 JPEG
 
 ---
 
-## Project Overview
+## Recent Session Summary
 
-Web-based whole slide image (WSI) viewer for a pathologist user study. Captures detailed interaction data (pan, zoom, clicks) to train ML models linking scanning behavior to diagnostic decisions.
+### ✅ Completed This Session
 
-### Architecture
-- **Frontend:** TypeScript + OpenSeadragon + Vite
-- **Backend:** Node.js + Express + PostgreSQL + JWT
-- **Admin:** Role-based dashboard with session replay
-- **Tiles:** DeepZoom Image (DZI) format, 512×512 tiles
+1. **Committed Data Integrity Fixes** (Commits: a21bb35, 3bf4c97)
+   - Fixed actual DZI level capture (no more placeholder values for fit-to-screen)
+   - Added viewing attempt tracking (differentiate multiple login sessions)
+   - Migration 004: Added `viewing_attempt` to sessions and events tables
+   - Updated README with migration 004
 
----
+2. **Fixed Critical Bug** (Commit: d32bd1f)
+   - **Bug:** Viewing attempt only incremented if events existed in database
+   - **Problem:** Events are buffered (batch of 10) and may not upload before browser close
+   - **Fix:** Added `last_started_at` timestamp, use 60-second threshold for new attempts
+   - Migration 005: Fixed race condition with time-based detection
+   - See `BUG_FIX_005.md` for full details
 
-## Task Status
-
-| Task | Description | Status |
-|------|-------------|--------|
-| T-0001 | WSI Tiler with alignment | ✅ |
-| T-0002 | Discrete navigation viewer | ✅ |
-| T-0003 | Click-to-zoom + logging | ✅ |
-| T-0004 | Backend API | ✅ |
-| T-0005 | Multi-user frontend | ✅ |
-| T-0006 | Admin dashboard | ✅ |
-| T-0009 | Verification scripts | ✅ |
-| T-0010 | Session replay | ✅ (with caveats above) |
-| T-0011 | Analysis tools | ⬜ |
-| T-0012 | Patch extraction | ⬜ |
-| T-0007 | Cloud deployment | ⬜ |
-| T-0008 | Production readiness | ⬜ |
+3. **Removed Deferred Tasks**
+   - Deleted T-0011 (offline analysis tools) - post-deployment work
+   - Deleted T-0012 (patch extraction) - ML pipeline work separate from hosting
 
 ---
 
-## Navigation Controls
-
-| Action | Behavior |
-|--------|----------|
-| Left-click | Centers on click, steps up zoom ladder |
-| Right-click | Zooms out one level, keeps center |
-| Arrow buttons | Pan by 0.4× viewport |
-| Back | Reverses last navigation |
-| Reset | Returns to fit view |
-
-**Zoom Ladder:** Fit → 2.5× → 5× → 10× → 20× → 40×
-
-**Disabled:** Keyboard shortcuts, mouse wheel, free pan
-
----
-
-## Event Schema (CSV)
+## Current Git Status
 
 ```
-ts_iso8601, session_id, user_id, slide_id, event, zoom_level, dzi_level,
-click_x0, click_y0, center_x0, center_y0, vbx0, vby0, vtx0, vty0,
-container_w, container_h, dpr, app_version, label, notes, viewing_attempt
+Branch: main (4 commits ahead of origin/main)
+Working directory: clean
+
+Recent commits:
+d32bd1f fix: viewing_attempt race condition - use timestamp not event count
+3bf4c97 docs: update backend README with migration 004
+a21bb35 feat: fix data integrity - actual DZI level capture + viewing attempt tracking
+c662b4b feat: enhance session replay visualization with segmented click paths
 ```
 
-**Event Types:** `app_start`, `slide_load`, `cell_click`, `zoom_step`, `arrow_pan`, `back_step`, `reset`, `label_select`, `slide_next`
+---
 
-**New Field:** `viewing_attempt` - Integer (1 = first viewing, 2+ = subsequent viewings after logout/login)
+## Completed Tasks (8/12)
+
+| Task | Status | Description |
+|------|--------|-------------|
+| T-0001 | ✅ | WSI tiling with alignment verification |
+| T-0002 | ✅ | Discrete navigation viewer |
+| T-0003 | ✅ | Click-to-zoom + logging |
+| T-0004 | ✅ | Backend API with PostgreSQL |
+| T-0005 | ✅ | Multi-user frontend with auth |
+| T-0006 | ✅ | Admin dashboard |
+| T-0009 | ✅ | Data verification scripts |
+| T-0010 | ✅ | Session replay viewer |
 
 ---
 
-## Key Files
+## Remaining Tasks for Launch (2)
 
-### Frontend
-- `src/viewer/main.ts` - Viewer logic, navigation, events
-- `src/viewer/SessionManager.ts` - Event buffering
-- `src/viewer/SlideQueue.ts` - Slide randomization
-- `src/admin/SessionReplay.ts` - Replay viewer (updated this session)
+### 🔴 **Next: T-0008 - Production Readiness** (~3 hours)
 
-### Backend
-- `backend/src/routes/auth.ts` - Authentication
-- `backend/src/routes/slides.ts` - Slide/session endpoints
-- `backend/src/routes/admin.ts` - Admin endpoints
-- `backend/src/db/migrations/` - Database schema
+**Goal:** Add production-grade features before deployment.
+
+**Required Deliverables:**
+1. **Error Handling**
+   - User-friendly error messages (no stack traces in production)
+   - Network failure handling with retry logic
+   - Form validation feedback
+
+2. **Loading States**
+   - Spinners during API calls (login, slide load, event upload)
+   - Disable buttons during submission
+   - Progress indicators for long operations
+
+3. **Rate Limiting**
+   - `backend/src/middleware/rateLimiter.ts`
+   - Limit auth endpoints: 5 login attempts per minute per IP
+   - Prevent brute force attacks
+
+4. **Retry Logic for Events**
+   - Exponential backoff for event upload failures
+   - 3 retry attempts before showing error
+   - Preserve events in memory if upload fails
+
+5. **User Documentation**
+   - `docs/USER_GUIDE.md` - Pathologist instructions
+   - `docs/ADMIN_GUIDE.md` - Admin instructions
+   - Include navigation controls, workflow, troubleshooting
+
+6. **Utility Scripts**
+   - `backend/scripts/create-users.js` - Bulk user creation from CSV
+   - Update with production usage examples
+
+**Key Files to Modify:**
+- `src/viewer/main.ts` - Add loading states, error handling
+- `src/viewer/api.ts` - Add retry logic
+- `backend/src/middleware/rateLimiter.ts` - NEW
+- `backend/src/index.ts` - Apply rate limiting
+- `docs/USER_GUIDE.md` - NEW
+- `docs/ADMIN_GUIDE.md` - NEW
+
+**Acceptance Criteria:**
+- [ ] Loading spinners visible during API operations
+- [ ] Errors display user-friendly messages
+- [ ] Rate limiting blocks excessive login attempts
+- [ ] Event upload retries 3 times with exponential backoff
+- [ ] User and admin guides complete and clear
+- [ ] Bulk user creation script tested
+
+### 🔴 **Then: T-0007 - Cloud Deployment** (~4 hours)
+
+Deploy to production infrastructure (AWS S3 + CloudFront + Railway + Vercel).
+
+**Note:** Comprehensive deployment guide already exists at [`DEPLOYMENT.md`](DEPLOYMENT.md).
 
 ---
 
-## Quick Start
+## Database Schema (Current)
+
+**5 migrations applied:**
+1. `001_initial.sql` - Core schema (users, slides, sessions, events)
+2. `002_add_dzi_level_to_events.sql` - DZI level tracking
+3. `003_add_notes_column.sql` - Notes field for sessions
+4. `004_add_viewing_attempt.sql` - Viewing attempt tracking
+5. `005_fix_viewing_attempt_race_condition.sql` - Time-based attempt detection
+
+**Sessions table fields:**
+- `id`, `user_id`, `slide_id`, `created_at`, `completed_at`, `label`, `notes`
+- `current_attempt` (integer, default 1)
+- `last_started_at` (timestamp, tracks session starts)
+
+**Events table fields:**
+- `id`, `session_id`, `ts_iso8601`, `event`, `zoom_level`, `dzi_level`
+- `click_x0`, `click_y0`, `center_x0`, `center_y0`
+- `vbx0`, `vby0`, `vtx0`, `vty0` (viewport bounds)
+- `container_w`, `container_h`, `dpr`, `app_version`
+- `label`, `notes`, `viewing_attempt` (integer, default 1)
+
+---
+
+## Key Project Decisions
+
+See [`project_state/decisions.md`](project_state/decisions.md) for all 21 decisions.
+
+**Recent additions:**
+- **D-0021:** Viewing attempt detection uses 60-second timestamp threshold, not event count (fixes race condition)
+
+---
+
+## Important Implementation Details
+
+### Event Batching
+- Frontend buffers events in memory (batch of 10)
+- Auto-uploads every 10 events
+- Auto-flushes on `beforeunload` (page close/refresh)
+- Uploads on slide completion
+
+### Viewing Attempt Logic
+- New session: `current_attempt = 1`, `last_started_at = NOW()`
+- Resume session:
+  - If `last_started_at` > 60 seconds ago → increment attempt
+  - If < 60 seconds → same attempt (page refresh)
+  - Always update `last_started_at = NOW()`
+
+### Navigation System
+- **Zoom Ladder:** Fit → 2.5× → 5× → 10× → 20× → 40×
+- **Controls:** Left-click zooms in, right-click zooms out, arrow buttons pan
+- **Disabled:** Keyboard shortcuts, mouse wheel, free pan/drag
+
+---
+
+## Local Development Setup
 
 ```bash
-# Database
-docker run --name pathology-postgres -p 5432:5432 -e POSTGRES_PASSWORD=dev123 -d postgres
-docker exec -i pathology-postgres psql -U postgres < backend/src/db/migrations/001_initial.sql
-docker exec -i pathology-postgres psql -U postgres -d pathology_study -f backend/src/db/migrations/002_add_dzi_level_to_events.sql
-docker exec -i pathology-postgres psql -U postgres -d pathology_study -f backend/src/db/migrations/003_add_notes_column.sql
-docker exec -i pathology-postgres psql -U postgres -d pathology_study -f backend/src/db/migrations/004_add_viewing_attempt.sql
+# Database (Docker)
+docker run --name pathology-db -p 5432:5432 -e POSTGRES_PASSWORD=dev123 -d postgres
+
+# Run all migrations
+docker exec -i pathology-db psql -U postgres < backend/src/db/migrations/001_initial.sql
+docker exec -i pathology-db psql -U postgres -d pathology_study -f backend/src/db/migrations/002_add_dzi_level_to_events.sql
+docker exec -i pathology-db psql -U postgres -d pathology_study -f backend/src/db/migrations/003_add_notes_column.sql
+docker exec -i pathology-db psql -U postgres -d pathology_study -f backend/src/db/migrations/004_add_viewing_attempt.sql
+docker exec -i pathology-db psql -U postgres -d pathology_study -f backend/src/db/migrations/005_fix_viewing_attempt_race_condition.sql
 
 # Backend (terminal 1)
 cd backend && npm install && npm run dev
@@ -158,21 +204,64 @@ cd backend && npm install && npm run dev
 npm install && npm run dev
 ```
 
-### Test Credentials
-| Username | Password | Role |
-|----------|----------|------|
-| admin | admin123 | admin |
-| pathologist1 | patho123 | pathologist |
-| pathologist2 | patho123 | pathologist |
+**Test Credentials:**
+- Admin: `admin` / `admin123`
+- Pathologist: `pathologist1` / `patho123`
 
 ---
 
-## Potential Next Actions (User to Decide)
+## Starting T-0008: Next Steps
 
-1. ~~**Fix fit-to-screen data capture**~~ ✅ DONE - Actual DZI level now captured
-2. ~~**Session separation**~~ ✅ DONE - `viewing_attempt` tracks separate login sessions
-3. **Make replay 100% data-driven** - Use captured viewport bounds instead of `goHome()` inference
-4. **Enable incomplete session replay** - Allow admins to view partial sessions
-5. **Continue with remaining tasks** (T-0007, T-0008, T-0011, T-0012)
+1. **Read task file:** [`tasks/T-0008.md`](tasks/T-0008.md)
+2. **Review current code:**
+   - `src/viewer/main.ts` - Main viewer (needs loading states)
+   - `src/viewer/api.ts` - API client (needs retry logic)
+   - `backend/src/index.ts` - Express server (needs rate limiting)
+3. **Create plan** following project conventions (see [`project_state/instructions.md`](project_state/instructions.md))
+4. **Implement incrementally** with tests after each step
+5. **Update documentation** as you add features
 
-**Estimated remaining for core tasks:** ~15 hours
+---
+
+## Reference Documents
+
+- **Spec:** [`project_state/spec.md`](project_state/spec.md)
+- **Decisions:** [`project_state/decisions.md`](project_state/decisions.md)
+- **Progress:** [`project_state/progress.md`](project_state/progress.md)
+- **Test Plan:** [`project_state/test_plan.md`](project_state/test_plan.md)
+- **Bug Fix 005:** [`BUG_FIX_005.md`](BUG_FIX_005.md)
+- **Deployment Guide:** [`DEPLOYMENT.md`](DEPLOYMENT.md)
+
+---
+
+## Data Integrity Status ✅
+
+| Data Field | Status |
+|------------|--------|
+| `dzi_level` at all zoom levels | ✅ Actual rendered level (fixed) |
+| `zoom_level` at all zoom levels | ✅ Calculated from DZI level (fixed) |
+| `viewing_attempt` tracking | ✅ Time-based detection (race condition fixed) |
+| Click coordinates (`click_x0`, `click_y0`) | ✅ Level-0 space |
+| Viewport bounds (`vbx0`, `vby0`, `vtx0`, `vty0`) | ✅ Level-0 space |
+| Timestamps | ✅ ISO 8601 format |
+| All event types | ✅ Correctly logged |
+
+**Ready for production data collection!** 🚀
+
+---
+
+## Success Criteria for T-0008
+
+- [ ] Loading spinners implemented and visible
+- [ ] Error messages are user-friendly (no technical jargon)
+- [ ] Rate limiting active on `/api/auth/login` (5 req/min/IP)
+- [ ] Event upload retry logic working (3 attempts, exponential backoff)
+- [ ] USER_GUIDE.md complete with screenshots/examples
+- [ ] ADMIN_GUIDE.md complete with workflow instructions
+- [ ] Bulk user creation script tested with sample CSV
+- [ ] All changes tested locally
+- [ ] No regressions in existing functionality
+
+---
+
+**Ready to begin T-0008 in fresh chat session!**
