@@ -923,6 +923,10 @@ async function playNextEvent(): Promise<void> {
  * - cell_click: Shows the click marker at the click position WITHOUT changing viewport.
  *   This displays the context in which the user made their click decision.
  * - zoom_step: Applies the zoomed viewport state, showing the result of the zoom action.
+ * 
+ * CRITICAL: Uses fitBounds() with logged viewport bounds to ensure the replay shows
+ * exactly what was visible during the original session, regardless of container size
+ * differences between the original viewer and the replay viewer.
  */
 async function goToEvent(index: number, animate: boolean): Promise<void> {
   if (!state.data || !viewer) return;
@@ -937,12 +941,13 @@ async function goToEvent(index: number, animate: boolean): Promise<void> {
   console.log(`[Replay] goToEvent(${index}): ${eventType}`, {
     zoom_level: event.zoom_level,
     dzi_level: event.dzi_level,
-    center: event.center_x0 !== null ? `(${event.center_x0?.toFixed(0)}, ${event.center_y0?.toFixed(0)})` : 'null'
+    center: event.center_x0 !== null ? `(${event.center_x0?.toFixed(0)}, ${event.center_y0?.toFixed(0)})` : 'null',
+    bounds: event.vbx0 !== null ? `[${event.vbx0?.toFixed(0)},${event.vty0?.toFixed(0)} - ${event.vtx0?.toFixed(0)},${event.vby0?.toFixed(0)}]` : 'null'
   });
   
   // Update UI immediately (before viewport change)
   updateControlsUI();
-  updateEventInfo(event);
+  updateEventInfo(event, index);
   
   // Events that should show home view (entire slide)
   if (eventType === 'app_start' || eventType === 'slide_load' || eventType === 'reset') {
@@ -978,66 +983,112 @@ async function goToEvent(index: number, animate: boolean): Promise<void> {
   
   // zoom_step, arrow_pan, back_step: Apply viewport state from the event
   // These events log the viewport state AFTER the action completed.
-  if (event.center_x0 !== null && event.center_y0 !== null) {
+  // 
+  // CRITICAL: Use fitBounds() with the logged viewport bounds to ensure
+  // the replay shows exactly what was visible, regardless of container size.
+  // The bounds are in level-0 image coordinates:
+  // - vbx0 = left edge X
+  // - vty0 = top edge Y  
+  // - vtx0 = right edge X
+  // - vby0 = bottom edge Y
+  
+  if (event.vbx0 !== null && event.vty0 !== null && 
+      event.vtx0 !== null && event.vby0 !== null) {
     
     try {
-      // Calculate zoom FIRST (before any viewport changes)
-      // This ensures we use the correct current state for coordinate conversion
-      let targetZoom: number;
+      // Calculate the viewport bounds rectangle in image coordinates
+      const left = event.vbx0;
+      const top = event.vty0;
+      const right = event.vtx0;
+      const bottom = event.vby0;
+      const width = right - left;
+      const height = bottom - top;
       
-      if (event.dzi_level !== null) {
-        targetZoom = getZoomForDziLevel(event.dzi_level);
-        console.log(`[Replay] Using dzi_level ${event.dzi_level} -> zoom ${targetZoom.toFixed(4)}`);
-      } else if (event.zoom_level !== null) {
-        // Fallback: estimate zoom from magnification level
-        // This is approximate but better than nothing
-        const maxZoom = viewer.viewport.getMaxZoom();
-        targetZoom = maxZoom * (event.zoom_level / 40);
-        console.log(`[Replay] Using zoom_level ${event.zoom_level} -> estimated zoom ${targetZoom.toFixed(4)}`);
-      } else {
-        // No zoom info - go home
-        console.log('[Replay] No zoom info, going home');
-        viewer.viewport.goHome(!animate);
-        
-        if (animate) {
-          await waitForAnimation();
-        }
-        
+      console.log(`[Replay] Viewport bounds (image coords): left=${left.toFixed(0)}, top=${top.toFixed(0)}, width=${width.toFixed(0)}, height=${height.toFixed(0)}`);
+      
+      // Convert image bounds to viewport coordinates
+      // OpenSeadragon uses normalized viewport coordinates where the image width = 1.0
+      const tiledImage = viewer.world.getItemAt(0);
+      if (!tiledImage) {
+        console.error('[Replay] No tiled image loaded');
         drawCurrentState();
         return;
       }
       
-      // Convert center to viewport coordinates using CURRENT viewport state
-      // This is safe because we haven't changed the viewport yet
+      // Convert image rectangle to viewport rectangle
+      const topLeftViewport = tiledImage.imageToViewportCoordinates(left, top);
+      const bottomRightViewport = tiledImage.imageToViewportCoordinates(right, bottom);
+      
+      const viewportRect = new OpenSeadragon.Rect(
+        topLeftViewport.x,
+        topLeftViewport.y,
+        bottomRightViewport.x - topLeftViewport.x,
+        bottomRightViewport.y - topLeftViewport.y
+      );
+      
+      console.log(`[Replay] Viewport rect: (${viewportRect.x.toFixed(4)}, ${viewportRect.y.toFixed(4)}) ${viewportRect.width.toFixed(4)} × ${viewportRect.height.toFixed(4)}`);
+      
+      // Validate coordinates
+      if (!isFinite(viewportRect.x) || !isFinite(viewportRect.y) ||
+          !isFinite(viewportRect.width) || !isFinite(viewportRect.height) ||
+          viewportRect.width <= 0 || viewportRect.height <= 0) {
+        console.error('[Replay] Invalid viewport rect:', viewportRect);
+        drawCurrentState();
+        return;
+      }
+      
+      // Use fitBounds to show exactly this region
+      // This ensures the replay shows the same image area regardless of container size
+      viewer.viewport.fitBounds(viewportRect, !animate);
+      
+      // Wait for animation if needed
+      if (animate) {
+        await waitForAnimation();
+      }
+    } catch (error) {
+      console.error('[Replay] Error updating viewport:', error);
+      // Continue anyway - draw what we can
+    }
+  } else if (event.center_x0 !== null && event.center_y0 !== null) {
+    // Fallback: if bounds aren't available, use center + zoom (less accurate)
+    console.log('[Replay] No bounds data, falling back to center + zoom');
+    
+    try {
+      let targetZoom: number;
+      
+      if (event.dzi_level !== null) {
+        targetZoom = getZoomForDziLevel(event.dzi_level);
+      } else if (event.zoom_level !== null) {
+        const maxZoom = viewer.viewport.getMaxZoom();
+        targetZoom = maxZoom * (event.zoom_level / 40);
+      } else {
+        viewer.viewport.goHome(!animate);
+        if (animate) await waitForAnimation();
+        drawCurrentState();
+        return;
+      }
+      
       const viewportCenter = viewer.viewport.imageToViewportCoordinates(
         event.center_x0, 
         event.center_y0
       );
       
-      // Validate coordinates
       if (!isFinite(viewportCenter.x) || !isFinite(viewportCenter.y)) {
         console.error('[Replay] Invalid viewport coordinates:', viewportCenter);
         drawCurrentState();
         return;
       }
       
-      console.log(`[Replay] Zooming to ${targetZoom.toFixed(4)}, center (${viewportCenter.x.toFixed(4)}, ${viewportCenter.y.toFixed(4)})`);
-      
-      // Apply zoom and pan
-      // IMPORTANT: zoomTo must be called BEFORE panTo for proper behavior
       if (animate) {
         viewer.viewport.zoomTo(targetZoom, undefined, false);
         viewer.viewport.panTo(viewportCenter, false);
-        
-        // Wait for animation to complete before drawing overlay
         await waitForAnimation();
       } else {
         viewer.viewport.zoomTo(targetZoom, undefined, true);
         viewer.viewport.panTo(viewportCenter, true);
       }
     } catch (error) {
-      console.error('[Replay] Error updating viewport:', error);
-      // Continue anyway - draw what we can
+      console.error('[Replay] Error in fallback viewport update:', error);
     }
   } else {
     console.log('[Replay] No viewport data for event', eventType);
@@ -1148,8 +1199,10 @@ function updateControlsUI(): void {
 
 /**
  * Update event info panel
+ * @param event - The replay event to display
+ * @param eventIndex - Optional index of the event in the events array (avoids indexOf lookup)
  */
-function updateEventInfo(event: ReplayEvent): void {
+function updateEventInfo(event: ReplayEvent, eventIndex?: number): void {
   const typeEl = document.getElementById('replay-event-type');
   const timeEl = document.getElementById('replay-event-time');
   const zoomEl = document.getElementById('replay-event-zoom');
@@ -1190,7 +1243,7 @@ function updateEventInfo(event: ReplayEvent): void {
       // cell_click is logged BEFORE zoom, so it shows the PREVIOUS viewport state.
       // Check if this is the first click after a fit event (slide_load/reset/app_start)
       // by looking at what magnification was displayed before this click.
-      const isFitClick = isClickAfterFitEvent(event);
+      const isFitClick = isClickAfterFitEvent(eventIndex);
       if (isFitClick) {
         zoomEl.textContent = 'Magnification: Fit to screen';
       } else if (event.zoom_level) {
@@ -1224,14 +1277,18 @@ function updateEventInfo(event: ReplayEvent): void {
  * 
  * cell_click events log the viewport state BEFORE the click action, so if the previous
  * viewport-changing event was a fit event, the click happened while viewing the entire slide.
+ * 
+ * @param clickIndex - The index of the click event in the events array (passed directly to avoid
+ *                     indexOf lookup which relies on object reference equality and could fail
+ *                     if event objects are cloned or reconstructed)
  */
-function isClickAfterFitEvent(clickEvent: ReplayEvent): boolean {
+function isClickAfterFitEvent(clickIndex: number | undefined): boolean {
   if (!state.data) return false;
   
   const events = state.data.events;
-  const clickIndex = events.indexOf(clickEvent);
   
-  if (clickIndex <= 0) return true; // First event or not found, assume fit
+  // If index not provided or invalid, assume fit mode (safe fallback)
+  if (clickIndex === undefined || clickIndex <= 0) return true;
   
   // Look backwards to find the last viewport-changing event before this click
   // Skip events that don't change viewport: label_select, slide_next, cell_click (itself)

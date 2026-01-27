@@ -325,7 +325,8 @@ router.get('/sessions/:sessionId/events', async (req: Request, res: Response) =>
         dpr,
         app_version,
         label,
-        notes
+        notes,
+        COALESCE(viewing_attempt, 1) as viewing_attempt
       FROM events
       WHERE session_id = $1
       ORDER BY ts_iso8601 ASC
@@ -352,7 +353,8 @@ router.get('/sessions/:sessionId/events', async (req: Request, res: Response) =>
       dpr: row.dpr ? parseFloat(row.dpr) : null,
       app_version: row.app_version,
       label: row.label,
-      notes: row.notes
+      notes: row.notes,
+      viewing_attempt: parseInt(row.viewing_attempt)
     }));
     
     console.log(`[ADMIN] Found ${events.length} events for session ${sessionId}`);
@@ -413,7 +415,8 @@ router.get('/export/csv', async (req: Request, res: Response) => {
         e.dpr,
         e.app_version,
         e.label,
-        e.notes
+        e.notes,
+        COALESCE(e.viewing_attempt, 1) as viewing_attempt
       FROM events e
       JOIN sessions sess ON e.session_id = sess.id
       JOIN users u ON sess.user_id = u.id
@@ -433,7 +436,7 @@ router.get('/export/csv', async (req: Request, res: Response) => {
     const headers = [
       'ts_iso8601', 'session_id', 'user_id', 'slide_id', 'event', 'zoom_level', 'dzi_level',
       'click_x0', 'click_y0', 'center_x0', 'center_y0', 'vbx0', 'vby0', 'vtx0', 'vty0',
-      'container_w', 'container_h', 'dpr', 'app_version', 'label', 'notes'
+      'container_w', 'container_h', 'dpr', 'app_version', 'label', 'notes', 'viewing_attempt'
     ];
     
     const csvRows = [

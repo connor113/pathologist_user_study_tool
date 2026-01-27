@@ -1,8 +1,14 @@
 # Progress Summary
 
-**Last Updated:** December 2025
+**Last Updated:** December 9, 2025
 
 ## Current Status: 87.5% Complete (8/8 core tasks + replay bug fixes done)
+
+### Recent Changes (Dec 9, 2025)
+- Fixed magnification display bug (now uses explicit `isFitMode` state tracking)
+- Reordered sidebar: Progress → Magnification → Navigation → Diagnosis → Logout
+- Combined Diagnosis and Notes into single section
+- Improved sidebar whitespace distribution (space-evenly)
 
 ### Completed ✅
 

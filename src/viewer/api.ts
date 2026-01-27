@@ -171,20 +171,21 @@ export async function getManifest(slideId: string): Promise<SlideManifest> {
 }
 
 /**
- * Start a new session for a slide
- * Creates session record in database
+ * Start a new session for a slide (or resume existing)
+ * Creates session record in database or returns existing session
+ * If resuming and events exist, viewing_attempt will be incremented
  * Requires authentication
  * 
  * @param slideId - Slide identifier
- * @returns Session ID (UUID)
+ * @returns Session ID (UUID) and viewing attempt number
  */
-export async function startSession(slideId: string): Promise<{ session_id: string }> {
-  const response = await apiCall<APIResponse<{ session_id: string }>>(
+export async function startSession(slideId: string): Promise<{ session_id: string, viewing_attempt: number }> {
+  const response = await apiCall<APIResponse<{ session_id: string, viewing_attempt: number }>>(
     `/api/slides/${slideId}/start`,
     { method: 'POST' }
   );
   
-  console.log(`[API] Session started: ${response.data.session_id}`);
+  console.log(`[API] Session started: ${response.data.session_id}, attempt: ${response.data.viewing_attempt}`);
   return response.data;
 }
 

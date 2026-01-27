@@ -123,7 +123,11 @@ router.get('/:slideId/manifest', async (req: Request, res: Response) => {
 
 /**
  * POST /api/slides/:slideId/start
- * Create new session for slide
+ * Create new session for slide, or resume existing session with incremented attempt
+ * 
+ * Returns:
+ * - session_id: UUID of the session
+ * - viewing_attempt: Current viewing attempt number (1 = first time, 2+ = resumed)
  */
 router.post('/:slideId/start', async (req: Request, res: Response) => {
   try {
@@ -149,7 +153,7 @@ router.post('/:slideId/start', async (req: Request, res: Response) => {
     
     // Check if session already exists
     const existingSessionQuery = `
-      SELECT id, completed_at FROM sessions 
+      SELECT id, completed_at, current_attempt FROM sessions 
       WHERE user_id = $1 AND slide_id = $2
     `;
     
@@ -164,31 +168,55 @@ router.post('/:slideId/start', async (req: Request, res: Response) => {
         });
       }
       
-      // Return existing session
-      console.log(`[API] Returning existing session: ${session.id}`);
+      // Check if there are existing events for this session
+      // If so, increment the viewing attempt (user is re-visiting after logout)
+      const eventCountQuery = `
+        SELECT COUNT(*) as count FROM events WHERE session_id = $1
+      `;
+      const eventCountResult = await pool.query(eventCountQuery, [session.id]);
+      const existingEventCount = parseInt(eventCountResult.rows[0].count, 10);
+      
+      let currentAttempt = session.current_attempt || 1;
+      
+      if (existingEventCount > 0) {
+        // User has logged events before - increment attempt for new viewing session
+        currentAttempt += 1;
+        
+        const updateAttemptQuery = `
+          UPDATE sessions SET current_attempt = $1 WHERE id = $2
+        `;
+        await pool.query(updateAttemptQuery, [currentAttempt, session.id]);
+        
+        console.log(`[API] Resuming session ${session.id} with new attempt ${currentAttempt} (${existingEventCount} existing events)`);
+      } else {
+        console.log(`[API] Returning existing session: ${session.id}, attempt: ${currentAttempt}`);
+      }
       
       return res.json({
         data: {
-          session_id: session.id
+          session_id: session.id,
+          viewing_attempt: currentAttempt
         }
       });
     }
     
-    // Create new session
+    // Create new session with attempt = 1
     const sessionQuery = `
-      INSERT INTO sessions (user_id, slide_id)
-      VALUES ($1, $2)
-      RETURNING id
+      INSERT INTO sessions (user_id, slide_id, current_attempt)
+      VALUES ($1, $2, 1)
+      RETURNING id, current_attempt
     `;
     
     const sessionResult = await pool.query(sessionQuery, [userId, slideDbId]);
     const sessionId = sessionResult.rows[0].id;
+    const viewingAttempt = sessionResult.rows[0].current_attempt;
     
-    console.log(`[API] Created new session: ${sessionId}`);
+    console.log(`[API] Created new session: ${sessionId}, attempt: ${viewingAttempt}`);
     
     res.json({
       data: {
-        session_id: sessionId
+        session_id: sessionId,
+        viewing_attempt: viewingAttempt
       }
     });
     
@@ -243,7 +271,8 @@ router.post('/sessions/:sessionId/events', async (req: Request, res: Response) =
         'session_id', 'ts_iso8601', 'event', 'zoom_level', 'dzi_level',
         'click_x0', 'click_y0',  // Exact click coordinates
         'center_x0', 'center_y0', 'vbx0', 'vby0', 'vtx0', 'vty0',
-        'container_w', 'container_h', 'dpr', 'app_version', 'label', 'notes'
+        'container_w', 'container_h', 'dpr', 'app_version', 'label', 'notes',
+        'viewing_attempt'  // Track which viewing attempt this event belongs to
       ];
 
       const values: any[] = [];
@@ -275,7 +304,8 @@ router.post('/sessions/:sessionId/events', async (req: Request, res: Response) =
           event.dpr,
           event.app_version,
           event.label ?? null,
-          event.notes ?? null
+          event.notes ?? null,
+          event.viewing_attempt ?? 1  // Default to 1 for backwards compatibility
         );
       });
 

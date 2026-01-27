@@ -21,6 +21,9 @@ let startState: ZoomHistoryEntry | null = null;
 // Label selection state
 let currentLabel: 'normal' | 'benign' | 'malignant' | null = null;
 
+// Fit mode state - explicitly track whether we're viewing the entire slide
+let isFitMode = true;
+
 // Auth state
 let currentUser: User | null = null;
 
@@ -317,6 +320,7 @@ async function handleLogout() {
     zoomHistory = [];
     startState = null;
     currentLabel = null;
+    isFitMode = true;
     appStartLogged = false;
     
     showLogin();
@@ -446,7 +450,8 @@ function logEvent(
     dpr: window.devicePixelRatio,
     app_version: appVersion,
     label: options.label,
-    notes: options.notes ?? null
+    notes: options.notes ?? null,
+    viewing_attempt: sessionManager.getViewingAttempt()
   };
   
   // Upload via SessionManager (noop until session established)
@@ -460,6 +465,81 @@ function logEvent(
 // CSV export removed - events are now uploaded to backend via API
 
 // ===== MAGNIFICATION ↔ DZI LEVEL MAPPING =====
+
+/**
+ * Calculate the actual DZI level being rendered by OpenSeadragon.
+ * This computes which pyramid level is being used based on current zoom.
+ * 
+ * Formula: DZI level = maxLevel + log2(imageZoom)
+ * where imageZoom is the ratio of displayed pixels to source pixels
+ * 
+ * @param viewer - OpenSeadragon viewer instance
+ * @returns The DZI level being rendered (integer, clamped to valid range)
+ */
+function getActualDziLevel(viewer: OpenSeadragon.Viewer): number {
+  const tiledImage = viewer.world.getItemAt(0);
+  if (!tiledImage || !tiledImage.source) {
+    console.warn('[DZI] No tiled image loaded');
+    return 0;
+  }
+  
+  const maxLevel = tiledImage.source.maxLevel;
+  const viewportZoom = viewer.viewport.getZoom(true);
+  
+  // Convert viewport zoom to image zoom
+  // viewportToImageZoom gives us how many source pixels per display pixel
+  const imageZoom = tiledImage.viewportToImageZoom(viewportZoom);
+  
+  // DZI level = maxLevel + log2(imageZoom)
+  // When imageZoom = 1 (1:1 pixel), we're at maxLevel
+  // When imageZoom = 0.5 (2:1 downsample), we're at maxLevel - 1
+  // etc.
+  const rawLevel = maxLevel + Math.log2(imageZoom);
+  
+  // Round to nearest integer and clamp to valid range
+  const dziLevel = Math.max(0, Math.min(maxLevel, Math.round(rawLevel)));
+  
+  return dziLevel;
+}
+
+/**
+ * Calculate magnification from DZI level using slide metadata.
+ * Uses the manifest's magnification_levels to find the closest standard magnification,
+ * or computes a non-standard magnification for fit-to-screen.
+ * 
+ * @param dziLevel - Current DZI level
+ * @param manifest - Slide manifest with magnification mappings
+ * @returns Magnification value (may be non-standard for fit mode)
+ */
+function getMagnificationFromDziLevel(dziLevel: number, manifest: SlideManifest): number {
+  // Check if this matches a standard magnification level
+  const standardMags: Array<{ mag: number, level: number }> = [
+    { mag: 40, level: manifest.magnification_levels['40x'] },
+    { mag: 20, level: manifest.magnification_levels['20x'] },
+    { mag: 10, level: manifest.magnification_levels['10x'] },
+    { mag: 5, level: manifest.magnification_levels['5x'] },
+    { mag: 2.5, level: manifest.magnification_levels['2.5x'] }
+  ];
+  
+  // Find exact match
+  for (const { mag, level } of standardMags) {
+    if (dziLevel === level) {
+      return mag;
+    }
+  }
+  
+  // No exact match - calculate magnification from DZI level
+  // Each DZI level is 2× the previous
+  // If 40× = maxLevel (e.g., 18), then:
+  // - Level 17 = 20×, Level 16 = 10×, Level 15 = 5×, Level 14 = 2.5×
+  const maxLevel = manifest.magnification_levels['40x'];
+  const levelDiff = maxLevel - dziLevel;
+  const mag = 40 / Math.pow(2, levelDiff);
+  
+  // Round to reasonable precision
+  return Math.round(mag * 100) / 100;
+}
+
 /**
  * Get OpenSeadragon zoom value for a specific DZI level.
  * This uses the exact DZI level from the manifest to ensure proper alignment
@@ -529,17 +609,15 @@ function getCurrentMagnificationAndLevel(viewer: OpenSeadragon.Viewer, manifest:
 function updateViewerState(viewer: OpenSeadragon.Viewer) {
   if (!manifest) return;
   
-  const magInfo = getCurrentMagnificationAndLevel(viewer, manifest);
-  
-  // If we're in "fit" mode (null), use 2.5× as reference
-  // This represents the first click level
-  const mag = magInfo ? magInfo.mag : 2.5;
-  const dziLevel = magInfo ? magInfo.dziLevel : manifest.magnification_levels['2.5x'];
+  // Always calculate the ACTUAL DZI level being rendered
+  // This is critical for data integrity - no placeholder values
+  const actualDziLevel = getActualDziLevel(viewer);
+  const actualMag = getMagnificationFromDziLevel(actualDziLevel, manifest);
   
   viewerState = {
     manifest,
-    currentZoomMag: mag,
-    currentDziLevel: dziLevel
+    currentZoomMag: actualMag,
+    currentDziLevel: actualDziLevel
   };
   
   // Update debug UI
@@ -570,19 +648,20 @@ function updateDebugUI() {
 /**
  * Update the magnification display in the side panel.
  * Shows "Fit to screen" when viewing entire slide, or "X×" for magnification levels.
+ * Uses explicit isFitMode flag for reliable state tracking.
  */
 function updateMagnificationDisplay() {
   const magDisplayEl = document.getElementById('magnification-display');
   if (!magDisplayEl || !manifest) return;
   
-  const magInfo = getCurrentMagnificationAndLevel(viewer, manifest);
-  
-  if (magInfo === null) {
+  if (isFitMode) {
     // We're in fit mode - entire slide visible
     magDisplayEl.textContent = 'Fit to screen';
   } else {
-    // Show current magnification level
-    magDisplayEl.textContent = `${magInfo.mag}×`;
+    // Show current magnification level from viewerState
+    if (viewerState) {
+      magDisplayEl.textContent = `${viewerState.currentZoomMag}×`;
+    }
   }
 }
 
@@ -669,6 +748,10 @@ function goBack() {
     // Use animated transition for better tile loading
     const imageBounds = viewer.world.getItemAt(0).getBounds();
     viewer.viewport.fitBounds(imageBounds, false);
+    
+    // Explicitly set fit mode state
+    isFitMode = true;
+    
     console.log('Restored to fit mode (start state)');
   } else {
     // Restore to specific zoom level using DZI level
@@ -679,6 +762,9 @@ function goBack() {
     // Restore center
     const centerViewport = viewer.viewport.imageToViewportCoordinates(previousState.centerX, previousState.centerY);
     viewer.viewport.panTo(centerViewport, true); // immediate
+    
+    // Not in fit mode - we're at a specific magnification
+    isFitMode = false;
     
     console.log(`Restored to ${previousState.zoomMag}× (DZI ${dziLevel})`);
   }
@@ -717,6 +803,9 @@ function resetView() {
   const imageBounds = viewer.world.getItemAt(0).getBounds();
   viewer.viewport.fitBounds(imageBounds, false); // Animate for better tile loading
   
+  // Explicitly set fit mode state - do this immediately so UI updates correctly
+  isFitMode = true;
+  
   console.log(`Reset to fit mode: bounds (${imageBounds.width.toFixed(2)} × ${imageBounds.height.toFixed(2)})`);
   
   // Force viewer state update after reset
@@ -744,6 +833,7 @@ function updateBackButton() {
 /**
  * Update arrow navigation button state based on zoom level.
  * Disables buttons when entire slide is visible (fit mode), enables when zoomed in.
+ * Uses explicit isFitMode flag for reliable state tracking.
  */
 function updateArrowButtonState() {
   if (!manifest || !viewer) return;
@@ -753,18 +843,14 @@ function updateArrowButtonState() {
   const btnLeft = document.getElementById('btn-left') as HTMLButtonElement;
   const btnRight = document.getElementById('btn-right') as HTMLButtonElement;
   
-  // Check if we're in "fit entire slide" mode
-  const magInfo = getCurrentMagnificationAndLevel(viewer, manifest);
-  const isInFitMode = magInfo === null;
-  
   // Disable arrows when entire slide is visible (no panning needed)
   // Enable when zoomed in (panning is useful)
-  if (btnUp) btnUp.disabled = isInFitMode;
-  if (btnDown) btnDown.disabled = isInFitMode;
-  if (btnLeft) btnLeft.disabled = isInFitMode;
-  if (btnRight) btnRight.disabled = isInFitMode;
+  if (btnUp) btnUp.disabled = isFitMode;
+  if (btnDown) btnDown.disabled = isFitMode;
+  if (btnLeft) btnLeft.disabled = isFitMode;
+  if (btnRight) btnRight.disabled = isFitMode;
   
-  if (isInFitMode) {
+  if (isFitMode) {
     console.log('[UI] Arrow buttons disabled - entire slide visible');
   } else {
     console.log('[UI] Arrow buttons enabled - zoomed in');
@@ -865,6 +951,7 @@ async function loadSlide(slideId: string) {
   zoomHistory = [];
   startState = null;
   currentLabel = null;
+  isFitMode = true;  // New slide starts in fit mode
   
   // Clear all radio button selections
   const allRadios = document.querySelectorAll('input[name="diagnosis"]') as NodeListOf<HTMLInputElement>;
@@ -1007,6 +1094,9 @@ viewer.addHandler('open', async () => {
     const imageBounds = viewer.world.getItemAt(0).getBounds();
     viewer.viewport.fitBounds(imageBounds, true);
     
+    // Explicitly set fit mode state
+    isFitMode = true;
+    
     console.log(`Initial view: Fitted entire slide bounds (${imageBounds.width.toFixed(2)} × ${imageBounds.height.toFixed(2)})`);
     
     // Initialize viewer state (will detect we're at fit level)
@@ -1027,8 +1117,8 @@ viewer.addHandler('open', async () => {
       try {
         // Use slide_id (string identifier) not id (database UUID)
         const session = await startSession(currentSlide.slide_id);
-        sessionManager.setSession(session.session_id);
-        console.log(`[Session] Created session: ${session.session_id} for slide: ${currentSlide.slide_id}`);
+        sessionManager.setSession(session.session_id, session.viewing_attempt);
+        console.log(`[Session] Session: ${session.session_id} for slide: ${currentSlide.slide_id}, viewing attempt: ${session.viewing_attempt}`);
       } catch (error) {
         console.error('[Session] Failed to create session:', error);
         // Continue anyway - events will be logged locally
@@ -1271,6 +1361,9 @@ viewer.addHandler('canvas-click', (event: any) => {
     const newZoomValue = getZoomForDziLevel(nextDziLevel, viewer);
     viewer.viewport.zoomTo(newZoomValue, undefined, true);
     
+    // No longer in fit mode - we've zoomed in
+    isFitMode = false;
+    
     console.log(`Zoomed: ${currentMag || 'fit'}× → ${nextZoom}× (DZI ${nextDziLevel})`);
     
     // Log zoom_step event
@@ -1324,6 +1417,10 @@ viewer.addHandler('canvas-nonprimary-press', (event: any) => {
     // Zoom to fit: use fitBounds to ensure entire slide is visible
     const imageBounds = viewer.world.getItemAt(0).getBounds();
     viewer.viewport.fitBounds(imageBounds, false);
+    
+    // Now in fit mode
+    isFitMode = true;
+    
     console.log('Zoomed out to fit');
   } else {
     // Zoom to previous magnification level
@@ -1334,6 +1431,9 @@ viewer.addHandler('canvas-nonprimary-press', (event: any) => {
     // Keep the same center
     const centerViewport = viewer.viewport.imageToViewportCoordinates(currentCenter.x, currentCenter.y);
     viewer.viewport.panTo(centerViewport, true);
+    
+    // Not in fit mode - at specific magnification
+    isFitMode = false;
     
     console.log(`Zoomed out: ${currentMag}× → ${prevZoom}× (DZI ${prevDziLevel})`);
   }

@@ -14,6 +14,7 @@ import { uploadEvents, completeSession, API_BASE_URL } from './api';
 
 export class SessionManager {
   private sessionId: string | null = null;
+  private viewingAttempt: number = 1;
   private eventBuffer: LogEvent[] = [];
   private readonly BATCH_SIZE = 10;
   private isUploading = false;
@@ -22,15 +23,17 @@ export class SessionManager {
   constructor(private readonly apiBaseUrl: string = API_BASE_URL) {}
 
   /**
-   * Initialize session manager with a session ID
+   * Initialize session manager with a session ID and viewing attempt
    * Should be called when starting a new slide review
    * 
    * @param sessionId - Session UUID from backend
+   * @param viewingAttempt - Current viewing attempt number (1 = first time, 2+ = resumed)
    */
-  setSession(sessionId: string): void {
+  setSession(sessionId: string, viewingAttempt: number = 1): void {
     this.sessionId = sessionId;
+    this.viewingAttempt = viewingAttempt;
     this.eventBuffer = [];
-    console.log(`[SessionManager] Session set: ${sessionId}`);
+    console.log(`[SessionManager] Session set: ${sessionId}, viewing attempt: ${viewingAttempt}`);
     this.startAutoFlush();
   }
 
@@ -39,6 +42,13 @@ export class SessionManager {
    */
   getSessionId(): string | null {
     return this.sessionId;
+  }
+
+  /**
+   * Get current viewing attempt number
+   */
+  getViewingAttempt(): number {
+    return this.viewingAttempt;
   }
 
   /**
@@ -173,6 +183,7 @@ export class SessionManager {
   reset(): void {
     console.log('[SessionManager] Resetting session manager');
     this.sessionId = null;
+    this.viewingAttempt = 1;
     this.eventBuffer = [];
     this.isUploading = false;
     this.stopAutoFlush();

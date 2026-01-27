@@ -69,8 +69,8 @@ export interface LogEvent {
   user_id: string;          // User identifier
   slide_id: string;         // Slide identifier from manifest
   event: EventType;         // Event type
-  zoom_level: number;       // Current magnification (2.5, 5, 10, 20, or 40)
-  dzi_level: number;        // DZI pyramid level index
+  zoom_level: number;       // Current magnification (2.5, 5, 10, 20, or 40) or actual for fit mode
+  dzi_level: number;        // DZI pyramid level index (actual level being rendered)
   click_x0: number | null;  // Exact click X in level-0 coords (only for cell_click)
   click_y0: number | null;  // Exact click Y in level-0 coords (only for cell_click)
   center_x0: number;        // Viewport center X in level-0 coords
@@ -85,6 +85,7 @@ export interface LogEvent {
   app_version: string;      // Application version
   label?: string;           // Label value (for label_select events)
   notes?: string | null;    // Notes captured with slide completion
+  viewing_attempt: number;  // Which viewing attempt this event belongs to (1 = first, 2+ = resumed)
 }
 
 // ============================================================================
@@ -207,6 +208,7 @@ export interface ReplayEvent {
   app_version: string | null;
   label: string | null;
   notes: string | null;
+  viewing_attempt: number;    // Which viewing attempt (1 = first, 2+ = resumed)
 }
 
 /**

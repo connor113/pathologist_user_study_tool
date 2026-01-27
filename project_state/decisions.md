@@ -59,3 +59,16 @@ Backend accepts multiple localhost ports via origin callback. Production uses si
 
 ### D-0018: Proper Event Listener Cleanup
 All event listeners and OpenSeadragon viewers must be properly cleaned up. Use flags to prevent duplicate registration; store handler references; destroy viewers before recreation.
+
+### D-0019: Explicit Fit Mode State Tracking
+Use explicit `isFitMode` boolean instead of inferring from zoom level comparison. Comparing current zoom to home zoom was unreliable due to animation timing (100ms check vs 1s animation). Explicit state set on: initial load, reset, back-to-start, zoom-to-fit. Cleared on: any zoom-in or zoom-out to specific level.
+
+### D-0020: Sidebar Layout - Workflow Order
+Sidebar sections ordered to match examine → decide workflow:
+1. Progress (header)
+2. Magnification & Instructions (reference during examination)
+3. Navigation (Back/Reset - examination tools)
+4. Diagnosis (combined with Notes - decision after examining)
+5. Logout (footer)
+
+Whitespace distributed evenly between sections using `space-evenly`. Notes textarea embedded in Diagnosis section without separate heading.
