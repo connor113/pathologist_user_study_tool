@@ -43,6 +43,7 @@ Connect to PostgreSQL and run the migration:
 docker exec -i pathology-db psql -U postgres < src/db/migrations/001_initial.sql
 docker exec -i pathology-db psql -U postgres -d pathology_study -f src/db/migrations/002_add_dzi_level_to_events.sql
 docker exec -i pathology-db psql -U postgres -d pathology_study -f src/db/migrations/003_add_notes_column.sql
+docker exec -i pathology-db psql -U postgres -d pathology_study -f src/db/migrations/004_add_viewing_attempt.sql
 ```
 
 This will:
@@ -50,6 +51,7 @@ This will:
 - Create all 4 tables (users, slides, sessions, events)
 - Add indexes for performance
 - Add the `dzi_level` column/index for event logging fidelity
+- Add the `viewing_attempt` tracking for differentiating multiple login sessions
 
 ### 5. Verify Database Setup
 
@@ -118,6 +120,7 @@ See `src/db/schema.sql` for full schema documentation.
 docker exec -i pathology-db psql -U postgres < src/db/migrations/001_initial.sql
 docker exec -i pathology-db psql -U postgres -d pathology_study -f src/db/migrations/002_add_dzi_level_to_events.sql
 docker exec -i pathology-db psql -U postgres -d pathology_study -f src/db/migrations/003_add_notes_column.sql
+docker exec -i pathology-db psql -U postgres -d pathology_study -f src/db/migrations/004_add_viewing_attempt.sql
 ```
 
 ### View Database Contents
