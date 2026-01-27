@@ -153,7 +153,7 @@ router.post('/:slideId/start', async (req: Request, res: Response) => {
     
     // Check if session already exists
     const existingSessionQuery = `
-      SELECT id, completed_at, current_attempt FROM sessions 
+      SELECT id, completed_at, current_attempt, last_started_at FROM sessions 
       WHERE user_id = $1 AND slide_id = $2
     `;
     
@@ -168,29 +168,39 @@ router.post('/:slideId/start', async (req: Request, res: Response) => {
         });
       }
       
-      // Check if there are existing events for this session
-      // If so, increment the viewing attempt (user is re-visiting after logout)
-      const eventCountQuery = `
-        SELECT COUNT(*) as count FROM events WHERE session_id = $1
-      `;
-      const eventCountResult = await pool.query(eventCountQuery, [session.id]);
-      const existingEventCount = parseInt(eventCountResult.rows[0].count, 10);
+      // Check if this is a new viewing attempt based on time since last start
+      // Threshold: If session was last started more than 60 seconds ago, it's a new viewing attempt
+      // This fixes the race condition where events haven't been uploaded yet
+      const VIEWING_ATTEMPT_THRESHOLD_MS = 60 * 1000; // 60 seconds
       
       let currentAttempt = session.current_attempt || 1;
+      let shouldIncrementAttempt = false;
       
-      if (existingEventCount > 0) {
-        // User has logged events before - increment attempt for new viewing session
-        currentAttempt += 1;
+      if (session.last_started_at) {
+        const timeSinceLastStart = Date.now() - new Date(session.last_started_at).getTime();
         
-        const updateAttemptQuery = `
-          UPDATE sessions SET current_attempt = $1 WHERE id = $2
-        `;
-        await pool.query(updateAttemptQuery, [currentAttempt, session.id]);
-        
-        console.log(`[API] Resuming session ${session.id} with new attempt ${currentAttempt} (${existingEventCount} existing events)`);
+        if (timeSinceLastStart > VIEWING_ATTEMPT_THRESHOLD_MS) {
+          // It's been more than threshold since last start - this is a new viewing attempt
+          shouldIncrementAttempt = true;
+          currentAttempt += 1;
+          console.log(`[API] New viewing attempt detected (${Math.round(timeSinceLastStart / 1000)}s since last start)`);
+        } else {
+          console.log(`[API] Same viewing attempt (only ${Math.round(timeSinceLastStart / 1000)}s since last start)`);
+        }
       } else {
-        console.log(`[API] Returning existing session: ${session.id}, attempt: ${currentAttempt}`);
+        // No last_started_at recorded yet (legacy session) - this is the first proper start
+        console.log(`[API] Legacy session - setting initial start time`);
       }
+      
+      // Update session with new attempt (if incremented) and current timestamp
+      const updateSessionQuery = `
+        UPDATE sessions 
+        SET current_attempt = $1, last_started_at = NOW() 
+        WHERE id = $2
+      `;
+      await pool.query(updateSessionQuery, [currentAttempt, session.id]);
+      
+      console.log(`[API] Resuming session ${session.id}, attempt: ${currentAttempt}`);
       
       return res.json({
         data: {
@@ -200,10 +210,10 @@ router.post('/:slideId/start', async (req: Request, res: Response) => {
       });
     }
     
-    // Create new session with attempt = 1
+    // Create new session with attempt = 1 and set initial start time
     const sessionQuery = `
-      INSERT INTO sessions (user_id, slide_id, current_attempt)
-      VALUES ($1, $2, 1)
+      INSERT INTO sessions (user_id, slide_id, current_attempt, last_started_at)
+      VALUES ($1, $2, 1, NOW())
       RETURNING id, current_attempt
     `;
     

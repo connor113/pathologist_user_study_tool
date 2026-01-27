@@ -72,3 +72,6 @@ Sidebar sections ordered to match examine → decide workflow:
 5. Logout (footer)
 
 Whitespace distributed evenly between sections using `space-evenly`. Notes textarea embedded in Diagnosis section without separate heading.
+
+### D-0021: Viewing Attempt Detection - Time-Based Not Event-Based
+Use `last_started_at` timestamp (60-second threshold) to detect new viewing attempts instead of checking if events exist in database. Original implementation had race condition: events are buffered on frontend and may not upload before browser close, causing repeat login sessions to not be differentiated. Time-based approach is independent of event upload timing and handles page refreshes correctly (< 60s = same attempt, > 60s = new attempt).
