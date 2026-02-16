@@ -5,8 +5,8 @@
 
 import { Router } from 'express';
 import type { Request, Response } from 'express';
-import { authenticate, requireAdmin } from '../middleware/auth.ts';
-import pool from '../db/index.ts';
+import { authenticate, requireAdmin } from '../middleware/auth.js';
+import pool from '../db/index.js';
 
 const router = Router();
 

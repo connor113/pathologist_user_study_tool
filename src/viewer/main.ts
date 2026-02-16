@@ -27,6 +27,9 @@ let isFitMode = true;
 // Auth state
 let currentUser: User | null = null;
 
+// Tile serving base URL (empty for local dev, CloudFront URL for production)
+const TILES_BASE_URL = import.meta.env.VITE_TILES_BASE_URL || '';
+
 // Event logging
 const sessionId = crypto.randomUUID(); // Generate unique session ID
 const appVersion = '1.0.0-alpha';
@@ -456,22 +459,9 @@ async function initAuth() {
 
 // ===== LOAD MANIFEST =====
 async function loadManifest(slideId: string): Promise<SlideManifest> {
-  try {
-    // Try loading from API first
-    const manifestData = await getManifest(slideId);
-    console.log(`[Demo] Loaded manifest from API for: ${slideId}`);
-    return manifestData;
-  } catch (error) {
-    console.warn(`[Demo] API failed, loading local manifest for: ${slideId}`);
-    // Fallback to local files
-    const response = await fetch(`/tiles/${slideId}_files/manifest.json`);
-    if (!response.ok) {
-      throw new Error(`Failed to load manifest: ${response.statusText}`);
-    }
-    const data = await response.json();
-    console.log('Manifest loaded:', data);
-    return data;
-  }
+  const manifestData = await getManifest(slideId);
+  console.log(`[Viewer] Loaded manifest from API for: ${slideId}`);
+  return manifestData;
 }
 
 // ===== EVENT LOGGING =====
@@ -1041,11 +1031,23 @@ async function loadSlide(slideId: string) {
     radio.checked = false;
   });
   
-  // Construct DZI URL
-  // For now, use local tiles path. In production, this could come from manifest or S3
-  // Backend will eventually serve this via API or provide S3 URLs
-  const dziUrl = `/tiles/${slideId}.dzi`;
-  console.log(`[Viewer] DZI URL: ${dziUrl}`);
+  // Construct tile source - use CloudFront URL in production, local .dzi in development
+  const tileSource = TILES_BASE_URL
+    ? {
+        Image: {
+          xmlns: "http://schemas.microsoft.com/deepzoom/2008",
+          Url: `${TILES_BASE_URL}/slides/${slideId}/files/`,
+          Format: "jpeg",
+          Overlap: String(manifest!.overlap),
+          TileSize: String(manifest!.tile_size),
+          Size: {
+            Width: String(manifest!.level0_width),
+            Height: String(manifest!.level0_height)
+          }
+        }
+      }
+    : `/tiles/${slideId}.dzi`;
+  console.log(`[Viewer] Tile source:`, typeof tileSource === 'string' ? tileSource : `${TILES_BASE_URL}/slides/${slideId}/files/`);
   
   // Load new slide into viewer
   // The main 'open' handler will handle the viewport fitting
@@ -1074,8 +1076,8 @@ async function loadSlide(slideId: string) {
     viewer.addOnceHandler('open', handler);
     viewer.addOnceHandler('open-failed', errorHandler);
     
-    console.log(`[Viewer] Opening slide: ${dziUrl}`);
-    viewer.open(dziUrl);
+    console.log(`[Viewer] Opening slide: ${slideId}`);
+    viewer.open(tileSource);
   });
 }
 

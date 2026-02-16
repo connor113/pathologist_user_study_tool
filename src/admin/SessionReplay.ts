@@ -262,13 +262,28 @@ async function initViewer(manifest: SlideManifest): Promise<void> {
   // Clear container in case of leftover elements
   container.innerHTML = '';
   
-  // Build DZI URL (local tiles)
-  const dziUrl = `/tiles/${manifest.slide_id}.dzi`;
-  
+  // Build tile source - use CloudFront URL in production, local .dzi in development
+  const tilesBaseUrl = import.meta.env.VITE_TILES_BASE_URL || '';
+  const tileSource = tilesBaseUrl
+    ? {
+        Image: {
+          xmlns: "http://schemas.microsoft.com/deepzoom/2008",
+          Url: `${tilesBaseUrl}/slides/${manifest.slide_id}/files/`,
+          Format: "jpeg",
+          Overlap: String(manifest.overlap),
+          TileSize: String(manifest.tile_size),
+          Size: {
+            Width: String(manifest.level0_width),
+            Height: String(manifest.level0_height)
+          }
+        }
+      }
+    : `/tiles/${manifest.slide_id}.dzi`;
+
   // Create viewer
   viewer = OpenSeadragon({
     element: container,
-    tileSources: dziUrl,
+    tileSources: tileSource,
     prefixUrl: 'https://cdn.jsdelivr.net/npm/openseadragon@4.1/build/openseadragon/images/',
     
     // Disable user interaction (replay is view-only)

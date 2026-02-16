@@ -402,15 +402,24 @@ function handleSessionSelect(sessionId: string): void {
     const endDate = new Date(session.completed_at).toLocaleString();
     const duration = Math.round((new Date(session.completed_at).getTime() - new Date(session.started_at).getTime()) / 1000 / 60);
     
-    sessionInfo.innerHTML = `
-      <strong>Session Details:</strong><br>
-      Pathologist: ${session.username}<br>
-      Slide: ${session.slide_name}<br>
-      Label: ${session.label}<br>
-      Started: ${startDate}<br>
-      Completed: ${endDate}<br>
-      Duration: ~${duration} min | Events: ${session.event_count}
-    `;
+    sessionInfo.textContent = '';
+    const details = document.createElement('div');
+    const strong = document.createElement('strong');
+    strong.textContent = 'Session Details:';
+    details.appendChild(strong);
+    details.appendChild(document.createElement('br'));
+    details.appendChild(document.createTextNode(`Pathologist: ${session.username}`));
+    details.appendChild(document.createElement('br'));
+    details.appendChild(document.createTextNode(`Slide: ${session.slide_name}`));
+    details.appendChild(document.createElement('br'));
+    details.appendChild(document.createTextNode(`Label: ${session.label}`));
+    details.appendChild(document.createElement('br'));
+    details.appendChild(document.createTextNode(`Started: ${startDate}`));
+    details.appendChild(document.createElement('br'));
+    details.appendChild(document.createTextNode(`Completed: ${endDate}`));
+    details.appendChild(document.createElement('br'));
+    details.appendChild(document.createTextNode(`Duration: ~${duration} min | Events: ${session.event_count}`));
+    sessionInfo.appendChild(details);
     sessionInfo.style.display = 'block';
   }
 }
