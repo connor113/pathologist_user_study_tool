@@ -55,10 +55,20 @@ app.get('/health', (req, res) => {
   });
 });
 
+// Import rate limiters
+import { authLimiter, apiLimiter } from './middleware/rateLimiter.ts';
+
 // Import route handlers
 import authRoutes from './routes/auth.ts';
 import slideRoutes from './routes/slides.ts';
 import adminRoutes from './routes/admin.ts';
+
+// Apply rate limiting to specific routes
+// Auth endpoints get stricter rate limiting (5 req/min)
+app.use('/api/auth/login', authLimiter);
+
+// General API rate limiting (100 req/min)
+app.use('/api', apiLimiter);
 
 // Mount routes
 app.use('/api/auth', authRoutes);

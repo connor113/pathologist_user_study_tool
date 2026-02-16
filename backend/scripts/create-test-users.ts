@@ -26,12 +26,12 @@ async function createTestUsers() {
     },
     {
       username: 'pathologist1',
-      password: 'patho123',
+      password: 'patho1',
       role: 'pathologist'
     },
     {
       username: 'pathologist2',
-      password: 'patho123',
+      password: 'patho2',
       role: 'pathologist'
     }
   ];
@@ -60,8 +60,8 @@ async function createTestUsers() {
   console.log('│ Username        │ Password     │ Role        │');
   console.log('├─────────────────┼──────────────┼─────────────┤');
   console.log('│ admin           │ admin123     │ admin       │');
-  console.log('│ pathologist1    │ patho123     │ pathologist │');
-  console.log('│ pathologist2    │ patho123     │ pathologist │');
+  console.log('│ pathologist1    │ patho1       │ pathologist │');
+  console.log('│ pathologist2    │ patho2       │ pathologist │');
   console.log('└─────────────────┴──────────────┴─────────────┘');
   
   await pool.end();

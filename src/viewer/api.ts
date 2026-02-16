@@ -22,6 +22,156 @@ import type {
 export const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
 
 /**
+ * Sleep for specified milliseconds
+ * Used for retry delays
+ */
+function sleep(ms: number): Promise<void> {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+/**
+ * Check if error is retryable
+ * Retries on network errors and 5xx server errors
+ * Does not retry on 4xx client errors (bad request, auth, etc.)
+ */
+function isRetryableError(error: any): boolean {
+  // Network errors are retryable
+  if (error.message?.includes('Failed to fetch') || 
+      error.message?.includes('NetworkError') ||
+      error.message?.includes('Network request failed') ||
+      error.message?.includes('Unable to connect')) {
+    return true;
+  }
+  
+  // 5xx server errors are retryable
+  const statusCode = (error as any).statusCode;
+  if (statusCode && statusCode >= 500 && statusCode < 600) {
+    return true;
+  }
+  
+  // 4xx client errors are NOT retryable
+  if (statusCode && statusCode >= 400 && statusCode < 500) {
+    return false;
+  }
+  
+  // Default: don't retry unknown errors
+  return false;
+}
+
+/**
+ * API call with automatic retry and exponential backoff
+ * Retries failed requests up to maxRetries times with exponential delays
+ * 
+ * @param endpoint - API endpoint path
+ * @param options - Fetch options
+ * @param maxRetries - Maximum number of retry attempts (default: 3)
+ * @returns Parsed JSON response
+ * @throws Error after all retries exhausted
+ */
+async function apiCallWithRetry<T>(
+  endpoint: string, 
+  options: RequestInit = {}, 
+  maxRetries: number = 3
+): Promise<T> {
+  let lastError: Error | null = null;
+  
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      // Try the API call
+      return await apiCall<T>(endpoint, options);
+    } catch (error) {
+      lastError = error as Error;
+      
+      // Check if we should retry
+      const shouldRetry = attempt < maxRetries && isRetryableError(error);
+      
+      if (!shouldRetry) {
+        // Don't retry - throw the error
+        throw error;
+      }
+      
+      // Calculate exponential backoff delay: 1s, 2s, 4s
+      const delay = Math.pow(2, attempt) * 1000;
+      
+      console.log(`[API] Request failed (attempt ${attempt + 1}/${maxRetries + 1}), retrying in ${delay}ms...`);
+      console.log(`[API] Error:`, (error as Error).message);
+      
+      // Wait before retrying
+      await sleep(delay);
+    }
+  }
+  
+  // All retries exhausted
+  console.error(`[API] All retry attempts exhausted for ${endpoint}`);
+  throw lastError || new Error('Request failed after retries');
+}
+
+/**
+ * Get user-friendly error message from error object
+ * Maps technical errors to readable messages
+ */
+function getUserFriendlyError(error: any, statusCode?: number): string {
+  // Network errors
+  if (error.message?.includes('Failed to fetch') || 
+      error.message?.includes('NetworkError') ||
+      error.message?.includes('Network request failed')) {
+    return 'Unable to connect. Please check your internet connection.';
+  }
+  
+  // Check for specific error messages FIRST (more specific than status codes)
+  if (error.message) {
+    const msg = error.message.toLowerCase();
+    
+    // Authentication errors - check credentials first before session expiry
+    if (msg.includes('invalid') && (msg.includes('username') || msg.includes('password') || msg.includes('credentials'))) {
+      return 'Invalid username or password.';
+    }
+    
+    if (msg.includes('expired') || msg.includes('invalid or expired token')) {
+      return 'Your session has expired. Please log in again.';
+    }
+    
+    // "Authentication required" for missing token (session expired)
+    if (msg.includes('authentication required')) {
+      return 'Your session has expired. Please log in again.';
+    }
+    
+    // Rate limiting
+    if (msg.includes('too many') || msg.includes('rate limit')) {
+      return 'Too many attempts. Please try again later.';
+    }
+    
+    // Generic validation errors
+    if (msg.includes('required') || msg.includes('validation')) {
+      return 'Please check your input and try again.';
+    }
+  }
+  
+  // Status code specific errors (fallback for messages without specific text)
+  if (statusCode) {
+    switch (statusCode) {
+      case 401:
+        // Only use generic session expired if we didn't catch a more specific message above
+        return 'Your session has expired. Please log in again.';
+      case 403:
+        return 'You do not have permission to perform this action.';
+      case 404:
+        return 'The requested resource was not found.';
+      case 429:
+        return 'Too many requests. Please slow down and try again later.';
+      case 500:
+      case 502:
+      case 503:
+      case 504:
+        return 'Something went wrong on our end. Please try again.';
+    }
+  }
+  
+  // Default error message
+  return 'Something went wrong. Please try again.';
+}
+
+/**
  * Generic API call helper
  * Handles fetch with credentials, JSON parsing, and error handling
  * 
@@ -32,6 +182,7 @@ export const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:30
  */
 async function apiCall<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
   const url = `${API_BASE_URL}${endpoint}`;
+  let statusCode: number | undefined;
   
   try {
     console.log(`[API] ${options.method || 'GET'} ${url}`);
@@ -45,6 +196,7 @@ async function apiCall<T>(endpoint: string, options: RequestInit = {}): Promise<
       },
     });
     
+    statusCode = response.status;
     console.log(`[API] Response status: ${response.status} ${response.statusText}`);
     
     // Parse response body
@@ -54,9 +206,13 @@ async function apiCall<T>(endpoint: string, options: RequestInit = {}): Promise<
     // Check for HTTP errors
     if (!response.ok) {
       // Backend returns { error: string } for errors
-      const errorMessage = (data as APIError).error || 'Request failed';
-      console.error(`[API] Error ${response.status}:`, errorMessage);
-      throw new Error(errorMessage);
+      const backendError = (data as APIError).error || 'Request failed';
+      console.error(`[API] Error ${response.status}:`, backendError);
+      
+      // Create error with both backend message and status code
+      const error = new Error(backendError);
+      (error as any).statusCode = statusCode;
+      throw error;
     }
     
     return data;
@@ -64,8 +220,14 @@ async function apiCall<T>(endpoint: string, options: RequestInit = {}): Promise<
   } catch (error) {
     // Network errors or fetch failures
     if (error instanceof Error) {
-      console.error(`[API] Network error:`, error.message);
-      throw error;
+      console.error(`[API] Error:`, error.message);
+      
+      // Add user-friendly message
+      const friendlyMessage = getUserFriendlyError(error, statusCode);
+      const friendlyError = new Error(friendlyMessage);
+      (friendlyError as any).originalError = error;
+      (friendlyError as any).statusCode = statusCode;
+      throw friendlyError;
     }
     throw new Error('Network request failed');
   }
@@ -195,6 +357,7 @@ export async function startSession(slideId: string): Promise<{ session_id: strin
 
 /**
  * Upload batch of events for a session
+ * Uses retry logic with exponential backoff for resilience
  * Requires authentication
  * 
  * @param sessionId - Session UUID
@@ -205,12 +368,14 @@ export async function uploadEvents(
   sessionId: string, 
   events: LogEvent[]
 ): Promise<{ inserted: number }> {
-  const response = await apiCall<APIResponse<{ inserted: number }>>(
+  // Use retry logic for event uploads (critical data)
+  const response = await apiCallWithRetry<APIResponse<{ inserted: number }>>(
     `/api/slides/sessions/${sessionId}/events`,
     {
       method: 'POST',
       body: JSON.stringify({ events }),
-    }
+    },
+    3 // 3 retry attempts
   );
   
   console.log(`[API] Uploaded ${response.data.inserted} events`);

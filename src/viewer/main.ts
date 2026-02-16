@@ -40,6 +40,59 @@ const sessionManager = new SessionManager();
 // Track whether we've logged the app start event for this browser session
 let appStartLogged = false;
 
+// ===== LOADING SPINNER =====
+function showLoadingSpinner(message: string = 'Loading...') {
+  const overlay = document.getElementById('loading-overlay');
+  const messageElement = document.getElementById('loading-message');
+  if (overlay) {
+    overlay.classList.add('visible');
+  }
+  if (messageElement) {
+    messageElement.textContent = message;
+  }
+}
+
+function hideLoadingSpinner() {
+  const overlay = document.getElementById('loading-overlay');
+  if (overlay) {
+    overlay.classList.remove('visible');
+  }
+}
+
+// ===== ERROR TOAST =====
+let errorToastTimeout: number | null = null;
+
+function showErrorMessage(message: string, duration: number = 5000) {
+  const toast = document.getElementById('error-toast');
+  const messageElement = document.getElementById('error-toast-message');
+  
+  if (toast && messageElement) {
+    // Clear any existing timeout
+    if (errorToastTimeout !== null) {
+      clearTimeout(errorToastTimeout);
+    }
+    
+    messageElement.textContent = message;
+    toast.classList.add('visible');
+    
+    // Auto-dismiss after duration
+    errorToastTimeout = window.setTimeout(() => {
+      hideErrorMessage();
+    }, duration);
+  }
+}
+
+function hideErrorMessage() {
+  const toast = document.getElementById('error-toast');
+  if (toast) {
+    toast.classList.remove('visible');
+  }
+  if (errorToastTimeout !== null) {
+    clearTimeout(errorToastTimeout);
+    errorToastTimeout = null;
+  }
+}
+
 // ===== UI HELPERS =====
 function showLogin() {
   const loginContainer = document.getElementById('login-container');
@@ -257,11 +310,18 @@ function checkWindowSize(): void {
 
 // ===== AUTH HANDLERS =====
 async function handleLogin(username: string, password: string): Promise<boolean> {
+  const loginBtn = document.getElementById('login-btn') as HTMLButtonElement;
+  
   try {
+    // Disable button and show loading
+    if (loginBtn) loginBtn.disabled = true;
+    showLoadingSpinner('Logging in...');
     hideLoginError();
+    
     console.log('[Auth] Attempting login for:', username);
     const user = await login(username, password);
     console.log('[Auth] Login response:', user);
+    
     if (user) {
       currentUser = user;
       console.log(`[Auth] Login successful: ${user.username} (${user.role})`);
@@ -292,11 +352,33 @@ async function handleLogin(username: string, password: string): Promise<boolean>
     }
   } catch (error) {
     console.error('[Auth] Login error:', error);
-    // Show the actual error message for debugging
-    const errorMessage = error instanceof Error ? error.message : 'Login failed. Please try again.';
+    
+    // User-friendly error message
+    let errorMessage = 'Invalid username or password';
+    if (error instanceof Error) {
+      // Network errors
+      if (error.message.includes('Failed to fetch') || error.message.includes('Network')) {
+        errorMessage = 'Unable to connect. Please check your internet connection.';
+      } else if (error.message.includes('session has expired')) {
+        errorMessage = 'Your session has expired. Please log in again.';
+      } else if (error.message.toLowerCase().includes('too many') || error.message.toLowerCase().includes('rate limit')) {
+        // Rate limiting
+        errorMessage = 'Too many login attempts. Please try again later.';
+      } else if (!error.message.includes('Authentication required') && 
+                 !error.message.includes('Invalid') &&
+                 !error.message.includes('username or password')) {
+        // Generic server error
+        errorMessage = 'Something went wrong. Please try again.';
+      }
+    }
+    
     console.error('[Auth] Error message:', errorMessage);
-    showLoginError(`Login failed: ${errorMessage}`);
+    showLoginError(errorMessage);
     return false;
+  } finally {
+    // Always hide loading and re-enable button
+    hideLoadingSpinner();
+    if (loginBtn) loginBtn.disabled = false;
   }
 }
 
@@ -968,13 +1050,31 @@ async function loadSlide(slideId: string) {
   // Load new slide into viewer
   // The main 'open' handler will handle the viewport fitting
   // Register listener before triggering load to avoid missing fast events
-  return new Promise<void>((resolve) => {
+  return new Promise<void>((resolve, reject) => {
     const handler = () => {
       console.log(`[Demo] Slide loaded and fitted: ${slideId}`);
+      clearTimeout(timeout);
       resolve();
     };
 
+    const errorHandler = (event: any) => {
+      console.error(`[Viewer] Failed to open slide:`, event);
+      clearTimeout(timeout);
+      reject(new Error(`Failed to load slide: ${slideId}`));
+    };
+
+    // Add timeout to prevent infinite hanging
+    const timeout = setTimeout(() => {
+      console.error(`[Viewer] Slide load timeout after 30 seconds: ${slideId}`);
+      viewer.removeHandler('open', handler);
+      viewer.removeHandler('open-failed', errorHandler);
+      reject(new Error(`Slide load timeout: ${slideId}`));
+    }, 30000);
+
     viewer.addOnceHandler('open', handler);
+    viewer.addOnceHandler('open-failed', errorHandler);
+    
+    console.log(`[Viewer] Opening slide: ${dziUrl}`);
     viewer.open(dziUrl);
   });
 }
@@ -1225,7 +1325,7 @@ if (btnConfirm && !confirmHandlerAttached) {
     
     if (!checkedRadio || !checkedRadio.value) {
       console.log('[Confirm] No diagnosis selected, showing alert');
-      alert('Please select a diagnosis before confirming.');
+      showErrorMessage('Please select a diagnosis before confirming.', 3000);
       return;
     }
     
@@ -1238,46 +1338,67 @@ if (btnConfirm && !confirmHandlerAttached) {
     console.log(`Confirmed label: ${selectedLabel}`);
     console.log('======================');
     
-    // Disable button during processing
+    // Disable button and show loading
     btnConfirm.disabled = true;
+    showLoadingSpinner('Saving and loading next slide...');
     
-    // Update currentLabel for logging
-    currentLabel = selectedLabel;
-    
-    // Log slide_next event
-    logEvent('slide_next', { label: selectedLabel, notes: notePayload });
-    
-    // Complete current session with label
     try {
-      await sessionManager.completeSession(selectedLabel);
-      console.log('[Session] Session completed successfully');
-      if (notesTextarea) {
-        notesTextarea.value = '';
+      // Update currentLabel for logging
+      currentLabel = selectedLabel;
+      
+      // Log slide_next event
+      logEvent('slide_next', { label: selectedLabel, notes: notePayload });
+      
+      // Complete current session with label
+      try {
+        await sessionManager.completeSession(selectedLabel);
+        console.log('[Session] Session completed successfully');
+        if (notesTextarea) {
+          notesTextarea.value = '';
+        }
+      } catch (error) {
+        console.error('[Session] Failed to complete session:', error);
+        showErrorMessage('Failed to save progress. Your data may not be saved.', 5000);
+        // Continue anyway - we still want to advance to next slide
+      }
+      
+      // Move to next slide
+      const nextSlide = await slideQueue.nextSlide();
+      updateProgressDisplay();
+      
+      // Reset label selection
+      currentLabel = null;
+      
+      if (nextSlide) {
+        // Load the new slide
+        console.log(`[Queue] Loading next slide: ${nextSlide.slide_id}`);
+        
+        try {
+          await loadSlide(nextSlide.slide_id);
+          console.log(`[Queue] Slide loaded successfully: ${nextSlide.slide_id}`);
+          
+          // Re-enable button after slide loads
+          btnConfirm.disabled = false;
+        } catch (loadError) {
+          console.error('[Queue] Failed to load slide:', loadError);
+          throw loadError; // Re-throw to be caught by outer catch
+        }
+      } else {
+        // All slides completed
+        console.log('[Queue] All slides completed!');
+        showStudyComplete();
+        // Keep button disabled since study is complete
       }
     } catch (error) {
-      console.error('[Session] Failed to complete session:', error);
-      // Continue anyway - we still want to advance to next slide
-    }
-    
-    // Move to next slide
-    const nextSlide = await slideQueue.nextSlide();
-    updateProgressDisplay();
-    
-    // Reset label selection
-    currentLabel = null;
-    
-    if (nextSlide) {
-      // Load the new slide
-      console.log(`[Queue] Loading next slide: ${nextSlide.slide_id}`);
-      await loadSlide(nextSlide.slide_id);
+      console.error('[Confirm] Failed to load next slide:', error);
       
-      // Re-enable button after slide loads
+      // Show specific error message
+      const errorMsg = error instanceof Error ? error.message : 'Unknown error occurred';
+      showErrorMessage(`Unable to load next slide: ${errorMsg}`, 7000);
+      
       btnConfirm.disabled = false;
-    } else {
-      // All slides completed
-      console.log('[Queue] All slides completed!');
-      showStudyComplete();
-      // Keep button disabled since study is complete
+    } finally {
+      hideLoadingSpinner();
     }
   });
   
@@ -1541,6 +1662,10 @@ loginFormElement?.addEventListener('submit', async (event) => {
 
 const logoutBtn = document.getElementById('logout-btn') as HTMLButtonElement;
 logoutBtn?.addEventListener('click', handleLogout);
+
+// ===== ERROR TOAST CLOSE BUTTON =====
+const errorToastClose = document.getElementById('error-toast-close') as HTMLButtonElement;
+errorToastClose?.addEventListener('click', hideErrorMessage);
 
 // ===== INITIALIZATION =====
 // Check authentication on page load
