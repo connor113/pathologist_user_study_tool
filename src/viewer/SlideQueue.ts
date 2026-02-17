@@ -12,6 +12,43 @@
 import type { Slide } from './types';
 import { getSlides } from './api';
 
+/**
+ * Hash user ID string to numeric seed
+ * Simple hash function for converting UUID to number
+ */
+export function hashUserId(userId: string): number {
+  let hash = 0;
+  for (let i = 0; i < userId.length; i++) {
+    const char = userId.charCodeAt(i);
+    hash = ((hash << 5) - hash) + char;
+    hash = hash & hash; // Convert to 32-bit integer
+  }
+  return Math.abs(hash);
+}
+
+/**
+ * Deterministic shuffle using user ID as seed
+ * Returns a new shuffled array without modifying the original
+ */
+export function seededShuffle<T>(items: T[], userId: string): T[] {
+  const result = [...items];
+  if (result.length <= 1) return result;
+
+  const seed = hashUserId(userId);
+  const a = 1664525;
+  const c = 1013904223;
+  const m = 2 ** 32;
+  let random = seed;
+
+  for (let i = result.length - 1; i > 0; i--) {
+    random = (a * random + c) % m;
+    const j = Math.floor((random / m) * (i + 1));
+    [result[i], result[j]] = [result[j], result[i]];
+  }
+
+  return result;
+}
+
 export class SlideQueue {
   private slides: Slide[] = [];
   private currentIndex: number = 0;
@@ -134,59 +171,16 @@ export class SlideQueue {
 
   /**
    * Deterministic shuffle using user ID as seed
-   * Uses simple Linear Congruential Generator (LCG) PRNG
-   * Same user ID always produces same shuffle order
-   * 
-   * @param userId - User UUID to seed the shuffle
+   * Delegates to the exported seededShuffle function
    */
   private shuffleSlides(userId: string): void {
     if (this.slides.length <= 1) {
-      return; // No need to shuffle
+      return;
     }
-    
-    console.log(`[SlideQueue] Applying deterministic shuffle (seed: ${userId.substring(0, 8)}...)`);
-    
-    // Convert user ID to numeric seed
-    const seed = this.hashUserId(userId);
-    
-    // Simple LCG PRNG: X(n+1) = (a * X(n) + c) mod m
-    // Using common LCG parameters
-    const a = 1664525;
-    const c = 1013904223;
-    const m = 2 ** 32;
-    
-    let random = seed;
-    
-    // Fisher-Yates shuffle with seeded PRNG
-    for (let i = this.slides.length - 1; i > 0; i--) {
-      // Generate next random number
-      random = (a * random + c) % m;
-      
-      // Get random index from 0 to i
-      const j = Math.floor((random / m) * (i + 1));
-      
-      // Swap elements
-      [this.slides[i], this.slides[j]] = [this.slides[j], this.slides[i]];
-    }
-    
-    console.log(`[SlideQueue] Shuffle complete, first slide: ${this.slides[0].slide_id}`);
-  }
 
-  /**
-   * Hash user ID string to numeric seed
-   * Simple hash function for converting UUID to number
-   * 
-   * @param userId - User UUID string
-   * @returns Numeric seed value
-   */
-  private hashUserId(userId: string): number {
-    let hash = 0;
-    for (let i = 0; i < userId.length; i++) {
-      const char = userId.charCodeAt(i);
-      hash = ((hash << 5) - hash) + char;
-      hash = hash & hash; // Convert to 32-bit integer
-    }
-    return Math.abs(hash);
+    console.log(`[SlideQueue] Applying deterministic shuffle (seed: ${userId.substring(0, 8)}...)`);
+    this.slides = seededShuffle(this.slides, userId);
+    console.log(`[SlideQueue] Shuffle complete, first slide: ${this.slides[0].slide_id}`);
   }
 
   /**

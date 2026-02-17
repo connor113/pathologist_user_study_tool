@@ -5,7 +5,10 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:all": "vitest run && cd backend && npx vitest run"
   },
   "dependencies": {
     "openseadragon": "^4.1.0"
@@ -13,6 +16,7 @@
   "devDependencies": {
     "@types/openseadragon": "^3.0.10",
     "typescript": "^5.3.3",
-    "vite": "^7.1.9"
+    "vite": "^7.1.9",
+    "vitest": "^4.0.18"
   }
 }

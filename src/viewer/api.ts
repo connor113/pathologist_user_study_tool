@@ -34,7 +34,7 @@ function sleep(ms: number): Promise<void> {
  * Retries on network errors and 5xx server errors
  * Does not retry on 4xx client errors (bad request, auth, etc.)
  */
-function isRetryableError(error: any): boolean {
+export function isRetryableError(error: any): boolean {
   // Network errors are retryable
   if (error.message?.includes('Failed to fetch') || 
       error.message?.includes('NetworkError') ||
