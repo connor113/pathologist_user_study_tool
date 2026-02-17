@@ -111,7 +111,7 @@ export interface Slide {
   s3_key_prefix: string;        // S3 path prefix for tiles
   completed: boolean;           // Whether this user has completed this slide
   session_id: string | null;    // Session UUID if started, null if not
-  label: string | null;         // Label if completed ('normal' | 'benign' | 'malignant')
+  label: string | null;         // Label if completed ('non-neoplastic' | 'low-grade' | 'high-grade')
   started_at?: string | null;   // ISO timestamp when session started
   completed_at?: string | null; // ISO timestamp when session completed
 }
@@ -180,7 +180,7 @@ export interface CompletedSession {
   slide_name: string;      // Slide identifier (e.g., "test_slide")
   started_at: string;      // ISO timestamp when session started
   completed_at: string;    // ISO timestamp when completed
-  label: string;           // Final diagnosis ('normal' | 'benign' | 'malignant')
+  label: string;           // Final diagnosis ('non-neoplastic' | 'low-grade' | 'high-grade')
   event_count: number;     // Total events in this session
 }
 

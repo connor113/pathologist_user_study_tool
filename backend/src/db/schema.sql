@@ -20,7 +20,8 @@ CREATE TABLE slides (
   slide_id VARCHAR(255) UNIQUE NOT NULL,
   s3_key_prefix VARCHAR(500) NOT NULL,
   manifest_json JSONB NOT NULL,
-  uploaded_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+  uploaded_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+  ground_truth VARCHAR(50) CHECK (ground_truth IN ('non-neoplastic', 'low-grade', 'high-grade'))
 );
 
 -- Sessions table: User-slide review sessions
@@ -30,7 +31,7 @@ CREATE TABLE sessions (
   slide_id UUID NOT NULL REFERENCES slides(id) ON DELETE CASCADE,
   started_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
   completed_at TIMESTAMPTZ,
-  label VARCHAR(50) CHECK (label IN ('normal', 'benign', 'malignant')),
+  label VARCHAR(50) CHECK (label IN ('non-neoplastic', 'low-grade', 'high-grade')),
   UNIQUE(user_id, slide_id)  -- One session per user per slide
 );
 

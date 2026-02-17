@@ -19,7 +19,7 @@ let zoomHistory: ZoomHistoryEntry[] = [];
 let startState: ZoomHistoryEntry | null = null;
 
 // Label selection state
-let currentLabel: 'normal' | 'benign' | 'malignant' | null = null;
+let currentLabel: 'non-neoplastic' | 'low-grade' | 'high-grade' | null = null;
 
 // Fit mode state - explicitly track whether we're viewing the entire slide
 let isFitMode = true;
@@ -95,6 +95,37 @@ function hideErrorMessage() {
     errorToastTimeout = null;
   }
 }
+
+// ===== WELCOME MODAL =====
+function showWelcomeModal() {
+  const modal = document.getElementById('welcome-modal');
+  if (modal) {
+    modal.style.display = 'flex';
+  }
+}
+
+function hideWelcomeModal() {
+  const modal = document.getElementById('welcome-modal');
+  if (modal) {
+    modal.style.display = 'none';
+  }
+}
+
+// Wire up welcome modal dismiss button
+const welcomeModalBtn = document.getElementById('welcome-modal-btn');
+welcomeModalBtn?.addEventListener('click', () => {
+  hideWelcomeModal();
+  // Set localStorage flag so modal doesn't show again for this user
+  if (currentUser) {
+    localStorage.setItem('welcome_shown_' + currentUser.id, '1');
+  }
+});
+
+// Wire up info button to re-show modal
+const btnInfo = document.getElementById('btn-info');
+btnInfo?.addEventListener('click', () => {
+  showWelcomeModal();
+});
 
 // ===== UI HELPERS =====
 function showLogin() {
@@ -346,6 +377,11 @@ async function handleLogin(username: string, password: string): Promise<boolean>
         console.log('[Auth] User is pathologist, showing viewer');
         updateUserDisplay();
         showApp();
+
+        // Show welcome modal on first login for this user
+        if (!localStorage.getItem('welcome_shown_' + user.id)) {
+          showWelcomeModal();
+        }
         return true;
       }
     } else {
@@ -444,6 +480,11 @@ async function initAuth() {
         console.log('[Auth] User is pathologist, showing viewer');
         updateUserDisplay();
         showApp();
+
+        // Show welcome modal on first login for this user
+        if (!localStorage.getItem('welcome_shown_' + user.id)) {
+          showWelcomeModal();
+        }
         return true;
       }
     } else {
@@ -1297,7 +1338,7 @@ const labelRadios = document.querySelectorAll('input[name="diagnosis"]') as Node
 labelRadios.forEach(radio => {
   radio.addEventListener('change', () => {
     if (radio.checked) {
-      currentLabel = radio.value as 'normal' | 'benign' | 'malignant';
+      currentLabel = radio.value as 'non-neoplastic' | 'low-grade' | 'high-grade';
       console.log(`Label selected: ${currentLabel}`);
       
       // Log label_select event
@@ -1331,7 +1372,7 @@ if (btnConfirm && !confirmHandlerAttached) {
       return;
     }
     
-    const selectedLabel = checkedRadio.value as 'normal' | 'benign' | 'malignant';
+    const selectedLabel = checkedRadio.value as 'non-neoplastic' | 'low-grade' | 'high-grade';
     const notesTextarea = document.getElementById('notes-textarea') as HTMLTextAreaElement | null;
     const notesValue = notesTextarea?.value?.trim();
     const notePayload = notesValue && notesValue.length > 0 ? notesValue : null;

@@ -211,7 +211,7 @@ router.get('/sessions', async (req: Request, res: Response) => {
     console.log(`[ADMIN] Fetching sessions${user_id ? ` for user ${user_id}` : ''}`);
     
     let sessionsQuery = `
-      SELECT 
+      SELECT
         sess.id,
         sess.user_id,
         u.username,
@@ -220,6 +220,7 @@ router.get('/sessions', async (req: Request, res: Response) => {
         sess.started_at,
         sess.completed_at,
         sess.label,
+        s.ground_truth,
         (SELECT COUNT(*) FROM events e WHERE e.session_id = sess.id) as event_count
       FROM sessions sess
       JOIN users u ON sess.user_id = u.id
@@ -247,6 +248,7 @@ router.get('/sessions', async (req: Request, res: Response) => {
       started_at: row.started_at,
       completed_at: row.completed_at,
       label: row.label,
+      ground_truth: row.ground_truth,
       event_count: parseInt(row.event_count)
     }));
     
@@ -416,7 +418,8 @@ router.get('/export/csv', async (req: Request, res: Response) => {
         e.app_version,
         e.label,
         e.notes,
-        COALESCE(e.viewing_attempt, 1) as viewing_attempt
+        COALESCE(e.viewing_attempt, 1) as viewing_attempt,
+        s.ground_truth
       FROM events e
       JOIN sessions sess ON e.session_id = sess.id
       JOIN users u ON sess.user_id = u.id
@@ -436,7 +439,7 @@ router.get('/export/csv', async (req: Request, res: Response) => {
     const headers = [
       'ts_iso8601', 'session_id', 'user_id', 'slide_id', 'event', 'zoom_level', 'dzi_level',
       'click_x0', 'click_y0', 'center_x0', 'center_y0', 'vbx0', 'vby0', 'vtx0', 'vty0',
-      'container_w', 'container_h', 'dpr', 'app_version', 'label', 'notes', 'viewing_attempt'
+      'container_w', 'container_h', 'dpr', 'app_version', 'label', 'notes', 'viewing_attempt', 'ground_truth'
     ];
     
     const csvRows = [

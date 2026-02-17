@@ -144,7 +144,7 @@ export class SessionManager {
    * Complete the current session with a diagnosis label
    * Uploads any remaining buffered events first, then marks session complete
    * 
-   * @param label - Diagnosis label ('normal' | 'benign' | 'malignant')
+   * @param label - Diagnosis label ('non-neoplastic' | 'low-grade' | 'high-grade')
    * @returns Promise that resolves when session is completed
    */
   async completeSession(label: string): Promise<void> {

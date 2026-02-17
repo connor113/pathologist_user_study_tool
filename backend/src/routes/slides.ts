@@ -361,9 +361,9 @@ router.post('/sessions/:sessionId/complete', async (req: Request, res: Response)
     const { label } = req.body;
     const userId = req.user!.id;
     
-    if (!label || !['normal', 'benign', 'malignant'].includes(label)) {
-      return res.status(400).json({ 
-        error: 'Valid label is required (normal, benign, or malignant)' 
+    if (!label || !['non-neoplastic', 'low-grade', 'high-grade'].includes(label)) {
+      return res.status(400).json({
+        error: 'Valid label is required (non-neoplastic, low-grade, or high-grade)'
       });
     }
     

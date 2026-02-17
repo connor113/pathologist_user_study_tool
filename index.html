@@ -520,6 +520,58 @@
     <div id="error-toast-message">An error occurred</div>
     <button id="error-toast-close" title="Dismiss">&times;</button>
   </div>
+  <!-- Welcome Modal -->
+  <div id="welcome-modal" style="
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    background: rgba(0, 0, 0, 0.6);
+    display: none;
+    justify-content: center;
+    align-items: center;
+    z-index: 10001;
+  ">
+    <div style="
+      background: white;
+      padding: 36px 40px;
+      border-radius: 12px;
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+      max-width: 520px;
+      width: 90%;
+    ">
+      <h2 style="margin: 0 0 16px 0; color: #333; font-size: 22px;">Diagnostic Categories</h2>
+      <p style="margin: 0 0 16px 0; color: #555; font-size: 15px; line-height: 1.5;">
+        Please classify each slide into one of three categories:
+      </p>
+      <div style="margin-bottom: 12px; padding: 10px 14px; background: #f8f9fa; border-radius: 6px; border-left: 3px solid #667eea;">
+        <strong style="color: #333;">Non-neoplastic</strong>
+        <span style="color: #555;"> &mdash; Normal tissue or benign findings with no neoplastic changes</span>
+      </div>
+      <div style="margin-bottom: 12px; padding: 10px 14px; background: #f8f9fa; border-radius: 6px; border-left: 3px solid #ffc107;">
+        <strong style="color: #333;">Low-grade</strong>
+        <span style="color: #555;"> &mdash; Conventional adenomas with low-grade dysplasia</span>
+      </div>
+      <div style="margin-bottom: 20px; padding: 10px 14px; background: #f8f9fa; border-radius: 6px; border-left: 3px solid #dc3545;">
+        <strong style="color: #333;">High-grade</strong>
+        <span style="color: #555;"> &mdash; Conventional adenomas with high-grade dysplasia, intra-mucosal carcinomas, or invasive adenocarcinomas</span>
+      </div>
+      <button id="welcome-modal-btn" style="
+        width: 100%;
+        padding: 14px;
+        background: #667eea;
+        color: white;
+        border: none;
+        border-radius: 6px;
+        font-size: 16px;
+        font-weight: bold;
+        cursor: pointer;
+        transition: background 0.2s;
+      ">I understand, begin</button>
+    </div>
+  </div>
+
   <!-- Login screen -->
   <div id="login-container">
     <div id="login-form">
@@ -580,18 +632,37 @@
         
         <!-- Diagnosis section (combined with notes) -->
         <section>
-          <h3>Diagnosis</h3>
+          <h3 style="display: flex; align-items: center; gap: 6px;">
+            Diagnosis
+            <button id="btn-info" title="Show class descriptions" style="
+              background: none;
+              border: 1px solid #999;
+              border-radius: 50%;
+              width: 18px;
+              height: 18px;
+              font-size: 12px;
+              line-height: 1;
+              cursor: pointer;
+              color: #667eea;
+              font-weight: bold;
+              padding: 0;
+              display: inline-flex;
+              align-items: center;
+              justify-content: center;
+              flex-shrink: 0;
+            ">&#8505;</button>
+          </h3>
           <div class="label-option">
-            <input type="radio" id="label-normal" name="diagnosis" value="normal">
-            <label for="label-normal">Normal</label>
+            <input type="radio" id="label-non-neoplastic" name="diagnosis" value="non-neoplastic">
+            <label for="label-non-neoplastic">Non-neoplastic</label>
           </div>
           <div class="label-option">
-            <input type="radio" id="label-benign" name="diagnosis" value="benign">
-            <label for="label-benign">Benign lesion</label>
+            <input type="radio" id="label-low-grade" name="diagnosis" value="low-grade">
+            <label for="label-low-grade">Low-grade</label>
           </div>
           <div class="label-option">
-            <input type="radio" id="label-malignant" name="diagnosis" value="malignant">
-            <label for="label-malignant">Malignant</label>
+            <input type="radio" id="label-high-grade" name="diagnosis" value="high-grade">
+            <label for="label-high-grade">High-grade</label>
           </div>
           <textarea id="notes-textarea" placeholder="Add optional notes..."></textarea>
           <button id="btn-confirm" class="sidebar-btn">Confirm & Next</button>

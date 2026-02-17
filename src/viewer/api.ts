@@ -387,7 +387,7 @@ export async function uploadEvents(
  * Requires authentication
  * 
  * @param sessionId - Session UUID
- * @param label - Final diagnosis label ('normal' | 'benign' | 'malignant')
+ * @param label - Final diagnosis label ('non-neoplastic' | 'low-grade' | 'high-grade')
  */
 export async function completeSession(
   sessionId: string, 

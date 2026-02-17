@@ -28,12 +28,14 @@ async function seedSlides() {
     {
       slide_id: 'test_slide',
       s3_key_prefix: 'local/test_slide',
-      manifest_path: '../../tiles/test_slide_files/manifest.json'
+      manifest_path: '../../tiles/test_slide_files/manifest.json',
+      ground_truth: null as string | null  // Set from label CSV if available
     },
     {
       slide_id: 'CRC_test_005',
       s3_key_prefix: 'local/CRC_test_005',
-      manifest_path: '../../tiles/CRC_test_005_files/manifest.json'
+      manifest_path: '../../tiles/CRC_test_005_files/manifest.json',
+      ground_truth: null as string | null  // Set from label CSV if available
     }
   ];
   
@@ -46,11 +48,11 @@ async function seedSlides() {
       
       // Upsert slide (insert or update if exists)
       await pool.query(`
-        INSERT INTO slides (slide_id, s3_key_prefix, manifest_json)
-        VALUES ($1, $2, $3)
-        ON CONFLICT (slide_id) 
-        DO UPDATE SET s3_key_prefix = $2, manifest_json = $3, uploaded_at = CURRENT_TIMESTAMP
-      `, [slide.slide_id, slide.s3_key_prefix, manifestJson]);
+        INSERT INTO slides (slide_id, s3_key_prefix, manifest_json, ground_truth)
+        VALUES ($1, $2, $3, $4)
+        ON CONFLICT (slide_id)
+        DO UPDATE SET s3_key_prefix = $2, manifest_json = $3, ground_truth = $4, uploaded_at = CURRENT_TIMESTAMP
+      `, [slide.slide_id, slide.s3_key_prefix, manifestJson, slide.ground_truth]);
       
       console.log(`✅ Created/updated slide: ${slide.slide_id}`);
     } catch (error) {
