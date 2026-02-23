@@ -1,16 +1,41 @@
 import { defineConfig } from 'vite';
+import express from 'express';
+import path from 'path';
+
+/**
+ * Custom plugin: serve /tiles as raw static files with aggressive caching.
+ * Bypasses Vite's transform pipeline entirely — critical for performance
+ * when OpenSeadragon requests hundreds of small JPEG tiles per zoom.
+ */
+function tilesPlugin() {
+  return {
+    name: 'serve-tiles',
+    configureServer(server: any) {
+      // Register BEFORE Vite's own middleware so /tiles requests
+      // never hit the transform pipeline
+      server.middlewares.use(
+        '/tiles',
+        express.static(path.resolve(__dirname, 'tiles'), {
+          maxAge: '1h',           // Browser caches tiles for 1 hour
+          immutable: false,
+          etag: true,
+          lastModified: true,
+          index: false,           // No directory listings
+          fallthrough: false,     // 404 immediately if tile missing (no Vite fallback)
+        })
+      );
+    },
+  };
+}
 
 export default defineConfig({
+  plugins: [tilesPlugin()],
   server: {
     port: 5173,
     open: true,
-    // CRITICAL: Increase concurrent connections for faster tile loading
-    // Default is around 100, but we need more for tiles
     fs: {
-      strict: false // Allow serving files from tiles directory
+      strict: false
     },
-    // Disable HTTP/2 push for better compatibility
-    middlewareMode: false
   },
   build: {
     outDir: 'dist',

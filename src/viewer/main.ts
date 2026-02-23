@@ -1379,6 +1379,24 @@ viewer.addHandler('zoom', () => {
   }
 });
 
+// Retry failed tiles up to 3 times — prevents permanently blurry regions
+viewer.addHandler('tile-load-failed', (event: any) => {
+  const tile = event.tile;
+  if (!tile._retryCount) tile._retryCount = 0;
+  tile._retryCount++;
+  
+  if (tile._retryCount <= 3) {
+    console.warn(`[Tiles] Retry ${tile._retryCount}/3 for tile level=${tile.level} (${tile.x},${tile.y})`);
+    setTimeout(() => {
+      // Re-queue the tile for loading
+      viewer.world.getItemAt(0)?.tilesMatrix?.[tile.level]?.[tile.x]?.[tile.y] && 
+        viewer.world.getItemAt(0).needsDraw();
+    }, tile._retryCount * 500); // 500ms, 1s, 1.5s backoff
+  } else {
+    console.error(`[Tiles] Tile failed after 3 retries: level=${tile.level} (${tile.x},${tile.y})`);
+  }
+});
+
 // Log any errors
 viewer.addHandler('open-failed', (event: any) => {
   console.error('Failed to load slide:', event);
