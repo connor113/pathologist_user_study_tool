@@ -13,7 +13,7 @@ const DB_NAME = 'pathology_study_test';
 async function setupTestDatabase() {
   // Connect to default postgres database to create test DB
   const adminPool = new Pool({
-    connectionString: 'postgresql://postgres:postgres@localhost:5432/postgres',
+    connectionString: 'postgresql://postgres:dev123@localhost:5432/postgres',
   });
 
   try {
@@ -31,7 +31,7 @@ async function setupTestDatabase() {
 
   // Connect to test database and run migrations
   const testPool = new Pool({
-    connectionString: `postgresql://postgres:postgres@localhost:5432/${DB_NAME}`,
+    connectionString: `postgresql://postgres:dev123@localhost:5432/${DB_NAME}`,
   });
 
   try {

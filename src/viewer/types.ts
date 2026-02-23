@@ -57,7 +57,10 @@ export type EventType =
   | 'back_step'
   | 'reset'
   | 'label_select'
-  | 'slide_next';
+  | 'slide_next'
+  | 'viewport_poll'
+  | 'idle_start'
+  | 'idle_end';
 
 /**
  * Log event - captures user interaction with full viewport state

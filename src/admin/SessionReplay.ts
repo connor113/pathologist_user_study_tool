@@ -989,8 +989,9 @@ async function goToEvent(index: number, animate: boolean): Promise<void> {
     return;
   }
   
-  // label_select, slide_next: No viewport change
-  if (eventType === 'label_select' || eventType === 'slide_next') {
+  // label_select, slide_next, viewport_poll, idle_start, idle_end: No viewport change
+  if (eventType === 'label_select' || eventType === 'slide_next' ||
+      eventType === 'viewport_poll' || eventType === 'idle_start' || eventType === 'idle_end') {
     console.log('[Replay]', eventType, '- no viewport change');
     drawCurrentState();
     return;
@@ -1234,7 +1235,10 @@ function updateEventInfo(event: ReplayEvent, eventIndex?: number): void {
       'back_step': '↩️ Back Step',
       'reset': '🔄 Reset',
       'label_select': '🏷️ Label Select',
-      'slide_next': '✅ Slide Next'
+      'slide_next': '✅ Slide Next',
+      'viewport_poll': '📍 Viewport Poll',
+      'idle_start': '💤 Idle Start',
+      'idle_end': '⏰ Idle End'
     };
     typeEl.textContent = typeLabels[event.event] || event.event;
   }
@@ -1307,7 +1311,7 @@ function isClickAfterFitEvent(clickIndex: number | undefined): boolean {
   
   // Look backwards to find the last viewport-changing event before this click
   // Skip events that don't change viewport: label_select, slide_next, cell_click (itself)
-  const nonViewportEvents = ['label_select', 'slide_next', 'cell_click'];
+  const nonViewportEvents = ['label_select', 'slide_next', 'cell_click', 'viewport_poll', 'idle_start', 'idle_end'];
   const fitEvents = ['app_start', 'slide_load', 'reset'];
   
   for (let i = clickIndex - 1; i >= 0; i--) {

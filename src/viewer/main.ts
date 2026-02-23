@@ -43,6 +43,14 @@ const sessionManager = new SessionManager();
 // Track whether we've logged the app start event for this browser session
 let appStartLogged = false;
 
+// ===== VIEWPORT POLLING & IDLE DETECTION =====
+const POLL_INTERVAL_MS = 2000;    // Viewport snapshot every 2 seconds
+const IDLE_THRESHOLD_MS = 30000;  // 30 seconds without interaction = idle
+let viewportPollTimerId: number | null = null;
+let idleCheckTimerId: number | null = null;
+let lastInteractionTime: number = Date.now();
+let isIdle = false;
+
 // ===== LOADING SPINNER =====
 function showLoadingSpinner(message: string = 'Loading...') {
   const overlay = document.getElementById('loading-overlay');
@@ -425,7 +433,8 @@ async function handleLogout() {
   try {
     await logout();
     currentUser = null;
-    
+    stopAllTimers();
+
     // Reset viewer state
     if (viewer) {
       viewer.destroy();
@@ -449,6 +458,7 @@ async function handleLogout() {
     console.error('[Auth] Logout error:', error);
     // Still show login even if API call fails
     currentUser = null;
+    stopAllTimers();
     if (viewer) {
       viewer.destroy();
       viewer = null;
@@ -523,7 +533,13 @@ function logEvent(
     console.warn('Cannot log event: manifest or viewerState not loaded');
     return;
   }
-  
+
+  // Update interaction time for user-initiated events (not system/polling events)
+  const systemEvents: EventType[] = ['viewport_poll', 'idle_start', 'idle_end'];
+  if (!systemEvents.includes(eventType)) {
+    updateLastInteractionTime();
+  }
+
   // Get current viewport bounds
   const bounds = viewer.viewport.getBounds();
   const topLeft = viewer.viewport.viewportToImageCoordinates(bounds.x, bounds.y);
@@ -572,9 +588,76 @@ function logEvent(
   console.log(`[LOG] ${eventType}:`, event);
 }
 
+// ===== VIEWPORT POLLING & IDLE DETECTION FUNCTIONS =====
+
 /**
- * Export event log as CSV file and trigger download.
+ * Update the last interaction timestamp. If the user was idle, emit idle_end
+ * and resume viewport polling.
  */
+function updateLastInteractionTime() {
+  lastInteractionTime = Date.now();
+  if (isIdle) {
+    isIdle = false;
+    logEvent('idle_end');
+    startViewportPolling();
+  }
+}
+
+/**
+ * Start periodic viewport snapshots every POLL_INTERVAL_MS.
+ */
+function startViewportPolling() {
+  stopViewportPolling();
+  viewportPollTimerId = window.setInterval(() => {
+    logEvent('viewport_poll');
+  }, POLL_INTERVAL_MS);
+}
+
+/**
+ * Stop viewport polling.
+ */
+function stopViewportPolling() {
+  if (viewportPollTimerId !== null) {
+    clearInterval(viewportPollTimerId);
+    viewportPollTimerId = null;
+  }
+}
+
+/**
+ * Start idle detection. Checks every 1s whether IDLE_THRESHOLD_MS has elapsed
+ * since the last user interaction. When idle is detected, emits idle_start and
+ * stops viewport polling to avoid redundant identical snapshots.
+ */
+function startIdleDetection() {
+  stopIdleDetection();
+  idleCheckTimerId = window.setInterval(() => {
+    if (!isIdle && (Date.now() - lastInteractionTime >= IDLE_THRESHOLD_MS)) {
+      isIdle = true;
+      logEvent('idle_start');
+      stopViewportPolling();
+    }
+  }, 1000);
+}
+
+/**
+ * Stop idle detection.
+ */
+function stopIdleDetection() {
+  if (idleCheckTimerId !== null) {
+    clearInterval(idleCheckTimerId);
+    idleCheckTimerId = null;
+  }
+}
+
+/**
+ * Stop all polling and idle timers. Used on session complete, logout, and page unload.
+ */
+function stopAllTimers() {
+  stopViewportPolling();
+  stopIdleDetection();
+  isIdle = false;
+}
+
 // CSV export removed - events are now uploaded to backend via API
 
 // ===== MAGNIFICATION ↔ DZI LEVEL MAPPING =====
@@ -1179,29 +1262,27 @@ function initializeViewer() {
   },
   
   // === TILE LOADING OPTIMIZATION ===
-  // CRITICAL: Disable immediateRender to prevent blurry tiles from showing
-  // This forces OSD to wait for correct resolution tiles before displaying
-  immediateRender: false,   // Wait for correct resolution (no blurry tiles!)
-  blendTime: 0,             // No fade/blend - instant tile display
-  minPixelRatio: 1.0,       // Require full-resolution tiles
-  maxImageCacheCount: 300,  // Moderate cache size to prevent memory bloat
+  // Show low-res placeholder tiles immediately while correct resolution loads
+  // This provides blurry-then-sharp transitions instead of blank-then-sharp
+  immediateRender: true,
+  blendTime: 0.15,          // Short crossfade as tiles resolve from low-res to high-res
+  minPixelRatio: 0.5,       // Allow half-res placeholders (OSD default)
+  maxImageCacheCount: 500,  // Larger cache for zoom-reset-zoom WSI workflow
+
+  // Let the browser manage concurrent tile requests naturally
+  preload: true,            // Prefetch tiles adjacent to viewport for smoother navigation
+  imageLoaderLimit: 0,      // No artificial limit (browser handles concurrency: 6/host HTTP/1.1, unlimited HTTP/2)
+  timeout: 30000,           // 30 second timeout per tile
   
-  // CRITICAL: Conservative loading for local dev server
-  preload: false,           // Disable preload - only load visible tiles (prevents queue overload)
-  imageLoaderLimit: 4,      // VERY CONSERVATIVE: Only 4 concurrent requests (dev server limitation)
-  timeout: 30000,           // 30 second timeout (dev server can be slow under load)
+  // Tile update strategy
+  alwaysBlend: false,       // Only blend when transitioning between resolution levels
   
-  // CRITICAL: Tile update strategy
-  alwaysBlend: false,       // Don't blend tiles (instant display)
-  // Use default composition (fastest) - omit property to use default
-  // Don't show placeholder (wait for real tiles) - omit property to use default
+  // Viewport animation - fast settling so OSD commits to final tile set quickly
+  springStiffness: 6.5,     // Default spring
+  animationTime: 0.3,       // Fast settle — slow animations delay tile loading, not help it
   
-  // Viewport animation - slower to give tiles time to load
-  springStiffness: 6.5,     // Default spring (was too fast at 15.0)
-  animationTime: 1.0,       // Slower animation = tiles load before viewport settles
-  
-  // CRITICAL: Only show tiles at correct resolution
-  minZoomImageRatio: 1.0,   // Require 100% resolution (was 0.8 allowing blur)
+  // Allow lower-res tiles as placeholders while correct resolution loads
+  minZoomImageRatio: 0.8,   // Allow ~1 level below ideal as placeholder
   maxZoomPixelRatio: 1.1,   // Allow slight over-zoom before loading next level
   
   // Performance
@@ -1262,6 +1343,11 @@ viewer.addHandler('open', async () => {
         const session = await startSession(currentSlide.slide_id);
         sessionManager.setSession(session.session_id, session.viewing_attempt);
         console.log(`[Session] Session: ${session.session_id} for slide: ${currentSlide.slide_id}, viewing attempt: ${session.viewing_attempt}`);
+
+        // Start viewport polling and idle detection for this session
+        lastInteractionTime = Date.now();
+        startViewportPolling();
+        startIdleDetection();
       } catch (error) {
         console.error('[Session] Failed to create session:', error);
         // Continue anyway - events will be logged locally
@@ -1391,7 +1477,10 @@ if (btnConfirm && !confirmHandlerAttached) {
       
       // Log slide_next event
       logEvent('slide_next', { label: selectedLabel, notes: notePayload });
-      
+
+      // Stop viewport polling and idle detection before completing session
+      stopAllTimers();
+
       // Complete current session with label
       try {
         await sessionManager.completeSession(selectedLabel);
@@ -1645,12 +1734,19 @@ if (viewerElement) {
 
 // ===== BUFFER FLUSH SAFEGUARDS =====
 window.addEventListener('beforeunload', () => {
+  stopAllTimers();
   sessionManager.flushBufferedEventsSync();
 });
 
 document.addEventListener('visibilitychange', () => {
   if (document.visibilityState === 'hidden') {
+    stopViewportPolling();
     sessionManager.flushBufferedEventsSync();
+  } else {
+    // Resume polling if session is active and user is not idle
+    if (sessionManager.getSessionId() && !isIdle) {
+      startViewportPolling();
+    }
   }
 });
   

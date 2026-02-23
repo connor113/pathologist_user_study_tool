@@ -15,7 +15,7 @@ export default defineConfig({
     env: {
       NODE_ENV: 'test',
       JWT_SECRET: 'test-secret-key-for-vitest',
-      DATABASE_URL: 'postgresql://postgres:postgres@localhost:5432/pathology_study_test',
+      DATABASE_URL: 'postgresql://postgres:dev123@localhost:5432/pathology_study_test',
     },
   },
 });
