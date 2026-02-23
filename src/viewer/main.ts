@@ -1156,7 +1156,25 @@ async function loadSlide(slideId: string) {
   });
   
   // Construct tile source - use CloudFront URL in production, local .dzi in development
-  const tileSource = TILES_BASE_URL
+  // In production: CloudFront serves tiles at /slides/{slideId}/files/
+  // In local dev with VITE_TILES_LOCAL_URL: tiles served at /{slideId}_files/
+  const tilesLocalUrl = import.meta.env.VITE_TILES_LOCAL_URL || '';
+  
+  const tileSource = tilesLocalUrl
+    ? {
+        Image: {
+          xmlns: "http://schemas.microsoft.com/deepzoom/2008",
+          Url: `${tilesLocalUrl}/${slideId}_files/`,
+          Format: "jpeg",
+          Overlap: String(manifest!.overlap),
+          TileSize: String(manifest!.tile_size),
+          Size: {
+            Width: String(manifest!.level0_width),
+            Height: String(manifest!.level0_height)
+          }
+        }
+      }
+    : TILES_BASE_URL
     ? {
         Image: {
           xmlns: "http://schemas.microsoft.com/deepzoom/2008",
