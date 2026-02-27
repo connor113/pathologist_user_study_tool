@@ -10,7 +10,7 @@ import dotenv from 'dotenv';
 if (process.env.NODE_ENV !== 'production') {
   dotenv.config();
 }
-console.log('[DB] ALL ENV KEYS:', Object.keys(process.env).sort().join(', '));
+// ENV debug removed for production security
 
 if (!process.env.DATABASE_URL) {
   console.error('[DB] FATAL: DATABASE_URL environment variable is not set');

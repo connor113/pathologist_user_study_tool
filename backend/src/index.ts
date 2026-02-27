@@ -10,6 +10,14 @@ import { createApp } from './app.js';
 // Load environment variables
 dotenv.config();
 
+// Validate critical env vars
+if (process.env.NODE_ENV === 'production') {
+  if (!process.env.JWT_SECRET || process.env.JWT_SECRET.length < 32) {
+    console.error('[FATAL] JWT_SECRET must be set and at least 32 characters in production');
+    process.exit(1);
+  }
+}
+
 const PORT = process.env.PORT || 3001;
 
 const app = createApp();
@@ -62,18 +70,22 @@ const runMigrations = async () => {
 
 await runMigrations();
 
-// Bootstrap admin user if none exists
+// Bootstrap admin user if none exists (uses ADMIN_PASSWORD env var or fallback)
 const bootstrapAdmin = async () => {
   try {
     const existing = await pool.query("SELECT id FROM users WHERE role='admin' LIMIT 1");
     if (existing.rows.length === 0) {
+      const adminPassword = process.env.ADMIN_PASSWORD || 'admin123';
       const bcrypt = await import('bcrypt');
-      const hash = await bcrypt.hash('admin123', 10);
+      const hash = await bcrypt.hash(adminPassword, 12);
       await pool.query(
         "INSERT INTO users (username, password_hash, role) VALUES ($1, $2, 'admin')",
         ['admin', hash]
       );
-      console.log('[DB] Bootstrap admin user created (admin / admin123)');
+      console.log('[DB] Bootstrap admin user created (username: admin)');
+      if (!process.env.ADMIN_PASSWORD) {
+        console.warn('[DB] WARNING: Using default admin password. Set ADMIN_PASSWORD env var for production.');
+      }
     }
   } catch (err: any) {
     console.error('[DB] Bootstrap admin error:', err.message);
