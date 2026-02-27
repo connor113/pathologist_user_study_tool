@@ -40,6 +40,28 @@ const gracefulShutdown = async (signal: string) => {
 process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
 process.on('SIGINT', () => gracefulShutdown('SIGINT'));
 
+// Run migrations on startup
+import { readFileSync } from 'fs';
+import { fileURLToPath } from 'url';
+import { dirname, join } from 'path';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+
+const runMigrations = async () => {
+  try {
+    const migrationPath = join(__dirname, 'db', 'migrations', '000_railway_full.sql');
+    const sql = readFileSync(migrationPath, 'utf8');
+    await pool.query(sql);
+    console.log('[DB] Migrations applied successfully');
+  } catch (err: any) {
+    console.error('[DB] Migration error:', err.message);
+    // Don't exit — tables might already exist
+  }
+};
+
+await runMigrations();
+
 // Start server
 const server = app.listen(PORT, () => {
   console.log(`[API] Server running on port ${PORT}`);
