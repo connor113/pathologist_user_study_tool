@@ -268,7 +268,7 @@ async function initViewer(manifest: SlideManifest): Promise<void> {
     ? {
         Image: {
           xmlns: "http://schemas.microsoft.com/deepzoom/2008",
-          Url: `${tilesBaseUrl}/slides/${manifest.slide_id}/files/`,
+          Url: `${tilesBaseUrl}/slides/${manifest.slide_id}/`,
           Format: "jpeg",
           Overlap: String(manifest.overlap),
           TileSize: String(manifest.tile_size),

@@ -1178,7 +1178,7 @@ async function loadSlide(slideId: string) {
     ? {
         Image: {
           xmlns: "http://schemas.microsoft.com/deepzoom/2008",
-          Url: `${TILES_BASE_URL}/slides/${slideId}/files/`,
+          Url: `${TILES_BASE_URL}/slides/${slideId}/`,
           Format: "jpeg",
           Overlap: String(manifest!.overlap),
           TileSize: String(manifest!.tile_size),
@@ -1189,7 +1189,7 @@ async function loadSlide(slideId: string) {
         }
       }
     : `/tiles/${slideId}.dzi`;
-  console.log(`[Viewer] Tile source:`, typeof tileSource === 'string' ? tileSource : `${TILES_BASE_URL}/slides/${slideId}/files/`);
+  console.log(`[Viewer] Tile source:`, typeof tileSource === 'string' ? tileSource : `${TILES_BASE_URL}/slides/${slideId}/`);
   
   // Load new slide into viewer
   // The main 'open' handler will handle the viewport fitting
