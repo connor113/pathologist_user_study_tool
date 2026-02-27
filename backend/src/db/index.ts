@@ -10,7 +10,8 @@ import dotenv from 'dotenv';
 if (process.env.NODE_ENV !== 'production') {
   dotenv.config();
 }
-console.log('[DB] ENV check:', Object.keys(process.env).filter(k => ['DATABASE_URL','NODE_ENV','PORT','JWT_SECRET'].includes(k)));
+console.log('[DB] ALL ENV KEYS:', Object.keys(process.env).sort().join(', '));
+
 if (!process.env.DATABASE_URL) {
   console.error('[DB] FATAL: DATABASE_URL environment variable is not set');
   process.exit(1);
