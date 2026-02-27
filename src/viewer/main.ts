@@ -1155,8 +1155,12 @@ async function loadSlide(slideId: string) {
     radio.checked = false;
   });
   
+  // Load manifest BEFORE constructing tile source (needed for CloudFront path)
+  manifest = await loadManifest(slideId);
+  console.log(`[Viewer] Manifest loaded: ${manifest.level0_width}x${manifest.level0_height}, tile_size=${manifest.tile_size}, overlap=${manifest.overlap}`);
+  
   // Construct tile source - use CloudFront URL in production, local .dzi in development
-  // In production: CloudFront serves tiles at /slides/{slideId}/files/
+  // In production: CloudFront serves tiles at /slides/{slideId}/
   // In local dev with VITE_TILES_LOCAL_URL: tiles served at /{slideId}_files/
   const tilesLocalUrl = import.meta.env.VITE_TILES_LOCAL_URL || '';
   
