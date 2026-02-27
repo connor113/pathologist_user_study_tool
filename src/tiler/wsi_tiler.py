@@ -163,7 +163,7 @@ def generate_tiles_libvips(
         str(output_dir / 'temp'),  # Base name (libvips adds _files suffix)
         tile_size=tile_size,
         overlap=0,
-        depth='onetile',
+        depth='onepixel',  # Generate ALL DZI levels (down to 1x1) for OpenSeadragon compatibility
         suffix=f'.jpeg[Q={quality}]',
         background=0
     )
