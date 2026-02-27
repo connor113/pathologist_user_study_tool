@@ -82,6 +82,37 @@ const bootstrapAdmin = async () => {
 
 await bootstrapAdmin();
 
+// Seed slides from CloudFront manifests if none exist
+const seedSlides = async () => {
+  try {
+    const existing = await pool.query('SELECT COUNT(*) FROM slides');
+    if (parseInt(existing.rows[0].count) > 0) {
+      console.log(`[DB] Slides already seeded (${existing.rows[0].count} found)`);
+      return;
+    }
+    const slideIds = ['CRC_0170','CRC_0423','CRC_0645','CRC_0908','CRC_1459','CRC_1472','CRC_2000','CRC_2103','CRC_2144','CRC_2198','CRC_2341','CRC_2593','CRC_2696','CRC_2739','CRC_2749','CRC_3060','CRC_3109','CRC_3138','CRC_3148','CRC_4240'];
+    const cfUrl = process.env.CLOUDFRONT_URL || 'https://d28izxa5ffe64k.cloudfront.net';
+    let seeded = 0;
+    for (const id of slideIds) {
+      try {
+        const res = await fetch(`${cfUrl}/slides/${id}/manifest.json`);
+        if (!res.ok) { console.error(`[DB] Manifest fetch failed for ${id}: ${res.status}`); continue; }
+        const manifest = await res.json();
+        await pool.query(
+          'INSERT INTO slides (slide_id, s3_key_prefix, manifest_json) VALUES ($1, $2, $3) ON CONFLICT DO NOTHING',
+          [id, `slides/${id}`, JSON.stringify(manifest)]
+        );
+        seeded++;
+      } catch (err: any) { console.error(`[DB] Seed error ${id}:`, err.message); }
+    }
+    console.log(`[DB] Seeded ${seeded} slides`);
+  } catch (err: any) {
+    console.error('[DB] Seed slides error:', err.message);
+  }
+};
+
+await seedSlides();
+
 // Start server
 const server = app.listen(PORT, () => {
   console.log(`[API] Server running on port ${PORT}`);
