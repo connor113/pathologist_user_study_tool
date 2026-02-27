@@ -6,9 +6,11 @@
 import { Pool } from 'pg';
 import dotenv from 'dotenv';
 
-// Load environment variables
-dotenv.config();
-
+// Only load .env file in development (Railway provides env vars natively)
+if (process.env.NODE_ENV !== 'production') {
+  dotenv.config();
+}
+console.log('[DB] ENV check:', Object.keys(process.env).filter(k => ['DATABASE_URL','NODE_ENV','PORT','JWT_SECRET'].includes(k)));
 if (!process.env.DATABASE_URL) {
   console.error('[DB] FATAL: DATABASE_URL environment variable is not set');
   process.exit(1);
