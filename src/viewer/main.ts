@@ -1039,14 +1039,24 @@ function updateArrowButtonState() {
   const btnLeft = document.getElementById('btn-left') as HTMLButtonElement;
   const btnRight = document.getElementById('btn-right') as HTMLButtonElement;
   
+  // Dynamically check if we're at fit level using actual zoom position.
+  // This prevents desync when OpenSeadragon animations trigger zoom events
+  // or when scroll-wheel zoom bypasses the isFitMode flag.
+  const currentZoom = viewer.viewport.getZoom(true);
+  const homeZoom = viewer.viewport.getHomeZoom();
+  const atFit = Math.abs(currentZoom - homeZoom) / homeZoom < 0.1;
+  
+  // Keep isFitMode in sync with actual state
+  isFitMode = atFit;
+  
   // Disable arrows when entire slide is visible (no panning needed)
   // Enable when zoomed in (panning is useful)
-  if (btnUp) btnUp.disabled = isFitMode;
-  if (btnDown) btnDown.disabled = isFitMode;
-  if (btnLeft) btnLeft.disabled = isFitMode;
-  if (btnRight) btnRight.disabled = isFitMode;
+  if (btnUp) btnUp.disabled = atFit;
+  if (btnDown) btnDown.disabled = atFit;
+  if (btnLeft) btnLeft.disabled = atFit;
+  if (btnRight) btnRight.disabled = atFit;
   
-  if (isFitMode) {
+  if (atFit) {
     console.log('[UI] Arrow buttons disabled - entire slide visible');
   } else {
     console.log('[UI] Arrow buttons enabled - zoomed in');
