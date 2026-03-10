@@ -97,12 +97,10 @@ await bootstrapAdmin();
 // Seed slides from CloudFront manifests if none exist
 const seedSlides = async () => {
   try {
-    const existing = await pool.query('SELECT COUNT(*) FROM slides');
-    if (parseInt(existing.rows[0].count) > 0) {
-      console.log(`[DB] Slides already seeded (${existing.rows[0].count} found)`);
-      return;
-    }
-    const slideIds = ['CRC_0170','CRC_0423','CRC_0645','CRC_0908','CRC_1459','CRC_1472','CRC_2000','CRC_2103','CRC_2144','CRC_2198','CRC_2341','CRC_2593','CRC_2696','CRC_2739','CRC_2749','CRC_3060','CRC_3109','CRC_3138','CRC_3148','CRC_4240'];
+    // Always reseed: clear and repopulate from CloudFront manifests
+    await pool.query('DELETE FROM slides');
+    console.log('[DB] Cleared slides table for reseed');
+    const slideIds = ['CRC_0018','CRC_0069','CRC_0114','CRC_0123','CRC_0132','CRC_0135','CRC_0155','CRC_0170'];
     const cfUrl = process.env.CLOUDFRONT_URL || 'https://d28izxa5ffe64k.cloudfront.net';
     let seeded = 0;
     for (const id of slideIds) {
