@@ -168,17 +168,31 @@ def generate_tiles_libvips(
         background=0
     )
     
-    # libvips creates output_dir/temp_files/, we need to rename it
+    # libvips creates output_dir/temp_files/, we need to move it
     temp_dir = output_dir / 'temp_files'
     if temp_dir.exists():
+        import shutil
+        import time as _time
         # Move all subdirectories to output_dir
+        # Use copytree+rmtree instead of rename to avoid Windows file-lock issues
         for level_dir in temp_dir.iterdir():
             target = output_dir / level_dir.name
             if target.exists():
-                import shutil
                 shutil.rmtree(target)
-            level_dir.rename(target)
-        temp_dir.rmdir()
+            try:
+                level_dir.rename(target)
+            except PermissionError:
+                # Windows antivirus/indexer may lock files — fall back to copy+delete
+                _time.sleep(1)
+                try:
+                    level_dir.rename(target)
+                except PermissionError:
+                    shutil.copytree(str(level_dir), str(target))
+                    shutil.rmtree(str(level_dir), ignore_errors=True)
+        try:
+            temp_dir.rmdir()
+        except OSError:
+            shutil.rmtree(str(temp_dir), ignore_errors=True)
         
         # Remove the temp.dzi file
         temp_dzi = output_dir / 'temp.dzi'
