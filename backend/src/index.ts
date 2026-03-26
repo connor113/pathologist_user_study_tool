@@ -94,34 +94,21 @@ const bootstrapAdmin = async () => {
 
 await bootstrapAdmin();
 
-// Seed slides from CloudFront manifests if none exist
-const seedSlides = async () => {
+// Skip auto-seed — slides are managed via seed-200-slides.cjs script
+// Previous auto-seed deleted all slides on every restart (dangerous!)
+const checkSlides = async () => {
   try {
-    // Always reseed: clear and repopulate from CloudFront manifests
-    await pool.query('DELETE FROM slides');
-    console.log('[DB] Cleared slides table for reseed');
-    const slideIds = ['CRC_0018','CRC_0069','CRC_0114','CRC_0123','CRC_0132','CRC_0135','CRC_0155','CRC_0170'];
-    const cfUrl = process.env.CLOUDFRONT_URL || 'https://d28izxa5ffe64k.cloudfront.net';
-    let seeded = 0;
-    for (const id of slideIds) {
-      try {
-        const res = await fetch(`${cfUrl}/slides/${id}/manifest.json`);
-        if (!res.ok) { console.error(`[DB] Manifest fetch failed for ${id}: ${res.status}`); continue; }
-        const manifest = await res.json();
-        await pool.query(
-          'INSERT INTO slides (slide_id, s3_key_prefix, manifest_json) VALUES ($1, $2, $3) ON CONFLICT DO NOTHING',
-          [id, `slides/${id}`, JSON.stringify(manifest)]
-        );
-        seeded++;
-      } catch (err: any) { console.error(`[DB] Seed error ${id}:`, err.message); }
+    const result = await pool.query('SELECT COUNT(*) as count FROM slides');
+    console.log(`[DB] ${result.rows[0].count} slides in database`);
+    if (parseInt(result.rows[0].count) === 0) {
+      console.log('[DB] WARNING: No slides found. Run: node backend/scripts/seed-200-slides.cjs');
     }
-    console.log(`[DB] Seeded ${seeded} slides`);
   } catch (err: any) {
-    console.error('[DB] Seed slides error:', err.message);
+    console.error('[DB] Slide check error:', err.message);
   }
 };
 
-await seedSlides();
+await checkSlides();
 
 // Start server
 const server = app.listen(PORT, () => {
