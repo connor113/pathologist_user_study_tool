@@ -187,7 +187,7 @@ router.post('/users', async (req: Request, res: Response) => {
           created_at: user.created_at,
           must_change_password: user.must_change_password
         },
-        temporary_password: tempPassword
+        temporaryPassword: tempPassword
       }
     });
     
