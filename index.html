@@ -742,8 +742,13 @@
       </table>
     </div>
     
-    <!-- Action Buttons -->
+    <!-- Create User + Action Buttons -->
     <div id="admin-actions">
+      <div id="create-user-section" style="display: flex; gap: 10px; align-items: center; margin-bottom: 12px;">
+        <input type="text" id="new-username-input" placeholder="New pathologist username" style="padding: 8px 12px; border: 1px solid #ccc; border-radius: 4px; font-size: 14px; width: 220px;">
+        <button id="btn-create-user" class="admin-btn admin-btn-primary">+ Create Pathologist</button>
+        <span id="create-user-result" style="font-size: 13px; color: #333;"></span>
+      </div>
       <button id="btn-export-csv" class="admin-btn admin-btn-primary">⬇ Download CSV Export</button>
     </div>
     

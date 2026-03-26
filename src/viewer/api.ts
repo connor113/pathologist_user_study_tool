@@ -443,25 +443,24 @@ export async function getAdminProgress(): Promise<ProgressStats> {
 /**
  * Create a new pathologist user account
  * Requires admin authentication
+ * Backend auto-generates a temporary password
  * 
  * @param username - New username
- * @param password - New password
- * @returns Created user object
+ * @returns Created user object with temporary password
  */
 export async function createAdminUser(
-  username: string, 
-  password: string
-): Promise<User> {
-  const response = await apiCall<APIResponse<{ user: User }>>(
+  username: string
+): Promise<{ user: User; temporaryPassword: string }> {
+  const response = await apiCall<APIResponse<{ user: User; temporaryPassword: string }>>(
     '/api/admin/users',
     {
       method: 'POST',
-      body: JSON.stringify({ username, password }),
+      body: JSON.stringify({ username }),
     }
   );
   
   console.log(`[API] Created user: ${response.data.user.username}`);
-  return response.data.user;
+  return response.data;
 }
 
 /**

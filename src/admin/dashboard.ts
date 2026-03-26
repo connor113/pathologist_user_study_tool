@@ -13,6 +13,7 @@ import {
   getAdminUsers, 
   getAdminProgress, 
   exportAdminCSV,
+  createAdminUser,
   logout,
   getCompletedSessions,
   getSessionEvents
@@ -286,7 +287,72 @@ function setupEventListeners(): void {
     });
   }
   
+  // Create User button
+  const createUserBtn = document.getElementById('btn-create-user');
+  if (createUserBtn) {
+    createUserBtn.addEventListener('click', async () => {
+      await handleCreateUser();
+    });
+  }
+
+  // Allow Enter key in username input
+  const newUsernameInput = document.getElementById('new-username-input');
+  if (newUsernameInput) {
+    newUsernameInput.addEventListener('keydown', async (e) => {
+      if ((e as KeyboardEvent).key === 'Enter') {
+        await handleCreateUser();
+      }
+    });
+  }
+  
   eventListenersSetup = true;
+}
+
+// ============================================================================
+// Create User Functions
+// ============================================================================
+
+/**
+ * Handle creating a new pathologist user
+ */
+async function handleCreateUser(): Promise<void> {
+  const usernameInput = document.getElementById('new-username-input') as HTMLInputElement;
+  const resultSpan = document.getElementById('create-user-result') as HTMLSpanElement;
+  const createBtn = document.getElementById('btn-create-user') as HTMLButtonElement;
+  
+  const username = usernameInput?.value.trim();
+  if (!username) {
+    if (resultSpan) {
+      resultSpan.textContent = '⚠️ Please enter a username';
+      resultSpan.style.color = '#c00';
+    }
+    return;
+  }
+  
+  try {
+    if (createBtn) { createBtn.disabled = true; createBtn.textContent = 'Creating...'; }
+    
+    const { user, temporaryPassword } = await createAdminUser(username);
+    
+    if (resultSpan) {
+      resultSpan.innerHTML = `✅ Created <strong>${user.username}</strong> — temp password: <code style="background:#f0f0f0;padding:2px 6px;border-radius:3px;user-select:all">${temporaryPassword}</code>`;
+      resultSpan.style.color = '#333';
+    }
+    
+    if (usernameInput) usernameInput.value = '';
+    
+    // Refresh the user table
+    await refreshDashboard();
+    
+  } catch (error: any) {
+    console.error('[Dashboard] Create user failed:', error);
+    if (resultSpan) {
+      resultSpan.textContent = `❌ ${error.message || 'Failed to create user'}`;
+      resultSpan.style.color = '#c00';
+    }
+  } finally {
+    if (createBtn) { createBtn.disabled = false; createBtn.textContent = '+ Create Pathologist'; }
+  }
 }
 
 // ============================================================================
