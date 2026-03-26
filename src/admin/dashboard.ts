@@ -23,6 +23,16 @@ import type { UserStats, ProgressStats, CompletedSession, SessionReplayData } fr
 // Store loaded sessions for the currently selected user
 let cachedSessions: CompletedSession[] = [];
 
+// Callback for when admin wants to view slides
+let onViewSlidesCallback: (() => void) | null = null;
+
+/**
+ * Set the callback for when admin clicks "View Slides"
+ */
+export function setOnViewSlides(callback: () => void): void {
+  onViewSlidesCallback = callback;
+}
+
 // Callback to trigger when replay is loaded (set by main.ts)
 let onReplayLoadCallback: ((data: SessionReplayData) => void) | null = null;
 
@@ -287,6 +297,14 @@ function setupEventListeners(): void {
     });
   }
   
+  // View Slides button (admin views slides like a pathologist)
+  const viewSlidesBtn = document.getElementById('btn-view-slides');
+  if (viewSlidesBtn) {
+    viewSlidesBtn.addEventListener('click', () => {
+      if (onViewSlidesCallback) onViewSlidesCallback();
+    });
+  }
+
   // Create User button
   const createUserBtn = document.getElementById('btn-create-user');
   if (createUserBtn) {

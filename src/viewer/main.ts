@@ -7,7 +7,7 @@ import type { SlideManifest, ViewerState, ZoomHistoryEntry, LogEvent, EventType,
 import { checkAuth, login, logout, getManifest, startSession } from './api';
 import { SlideQueue } from './SlideQueue';
 import { SessionManager } from './SessionManager';
-import { initDashboard, showDashboard, hideDashboard, setOnReplayLoad } from '../admin/dashboard';
+import { initDashboard, showDashboard, hideDashboard, setOnReplayLoad, setOnViewSlides } from '../admin/dashboard';
 import { initReplay, setOnBack as setReplayOnBack } from '../admin/SessionReplay';
 import { FirstLoginSetup } from './FirstLoginSetup';
 
@@ -432,6 +432,15 @@ async function handleLogin(username: string, password: string): Promise<boolean>
         hideDashboard(); // Ensure clean state
         showDashboard();
         setupReplayCallbacks();
+        
+        // Allow admin to view slides like a pathologist
+        setOnViewSlides(() => {
+          console.log('[Auth] Admin switching to slide viewer');
+          hideDashboard();
+          updateUserDisplay();
+          showApp();
+        });
+        
         await initDashboard(user.username);
         return true;
       } else {
@@ -537,6 +546,15 @@ async function initAuth() {
         hideDashboard(); // Ensure clean state
         showDashboard();
         setupReplayCallbacks();
+        
+        // Allow admin to view slides like a pathologist
+        setOnViewSlides(() => {
+          console.log('[Auth] Admin switching to slide viewer');
+          hideDashboard();
+          updateUserDisplay();
+          showApp();
+        });
+        
         await initDashboard(user.username);
         return true;
       } else {
