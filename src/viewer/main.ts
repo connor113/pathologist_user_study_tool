@@ -10,6 +10,7 @@ import { SessionManager } from './SessionManager';
 import { initDashboard, showDashboard, hideDashboard, setOnReplayLoad, setOnViewSlides } from '../admin/dashboard';
 import { initReplay, setOnBack as setReplayOnBack } from '../admin/SessionReplay';
 import { FirstLoginSetup } from './FirstLoginSetup';
+import { ChangePassword } from './ChangePassword';
 
 // ===== STATE =====
 let manifest: SlideManifest | null = null;
@@ -1923,6 +1924,15 @@ loginFormElement?.addEventListener('submit', async (event) => {
 
 const logoutBtn = document.getElementById('logout-btn') as HTMLButtonElement;
 logoutBtn?.addEventListener('click', handleLogout);
+
+// Change Password button (for pathologist sidebar)
+const changePasswordBtn = document.getElementById('change-password-btn') as HTMLButtonElement;
+changePasswordBtn?.addEventListener('click', () => {
+  const changePasswordModal = new ChangePassword(() => {
+    console.log('[App] Password changed successfully');
+  });
+  changePasswordModal.show();
+});
 
 // ===== ERROR TOAST CLOSE BUTTON =====
 const errorToastClose = document.getElementById('error-toast-close') as HTMLButtonElement;

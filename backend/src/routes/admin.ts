@@ -395,6 +395,135 @@ router.get('/sessions/:sessionId/events', async (req: Request, res: Response) =>
 });
 
 /**
+ * POST /api/admin/users/:userId/reset-password
+ * Reset a pathologist's password to a new temporary password
+ */
+router.post('/users/:userId/reset-password', async (req: Request, res: Response) => {
+  try {
+    const { userId } = req.params;
+    
+    console.log(`[ADMIN] Resetting password for user: ${userId}`);
+    
+    // Generate random temporary password (8 chars: letters + numbers)
+    const generateTempPassword = () => {
+      const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789';
+      let password = '';
+      for (let i = 0; i < 8; i++) {
+        password += chars.charAt(Math.floor(Math.random() * chars.length));
+      }
+      return password;
+    };
+    
+    const tempPassword = generateTempPassword();
+    
+    // Hash password
+    const bcrypt = await import('bcrypt');
+    const passwordHash = await bcrypt.hash(tempPassword, 10);
+    
+    // Update user password and set must_change_password = true
+    const updateQuery = `
+      UPDATE users 
+      SET password_hash = $1, must_change_password = true
+      WHERE id = $2 AND role = 'pathologist'
+      RETURNING id, username
+    `;
+    
+    const result = await pool.query(updateQuery, [passwordHash, userId]);
+    
+    if (result.rows.length === 0) {
+      return res.status(404).json({ 
+        error: 'Pathologist user not found' 
+      });
+    }
+    
+    const user = result.rows[0];
+    
+    console.log(`[ADMIN] Password reset for user: ${user.username} (${user.id})`);
+    
+    res.json({
+      data: {
+        user: {
+          id: user.id,
+          username: user.username
+        },
+        temporaryPassword: tempPassword
+      }
+    });
+    
+  } catch (error: any) {
+    console.error('[ADMIN] Error resetting password:', error);
+    res.status(500).json({ 
+      error: 'Failed to reset password' 
+    });
+  }
+});
+
+/**
+ * GET /api/admin/misclassifications
+ * Get all completed sessions where pathologist label != ground_truth
+ */
+router.get('/misclassifications', async (req: Request, res: Response) => {
+  try {
+    console.log(`[ADMIN] Fetching misclassifications by: ${req.user!.username}`);
+    
+    const query = `
+      SELECT 
+        sess.id,
+        u.username,
+        s.slide_id,
+        sess.label as pathologist_label,
+        s.ground_truth,
+        EXTRACT(EPOCH FROM (sess.completed_at - sess.started_at)) as duration_seconds
+      FROM sessions sess
+      JOIN users u ON sess.user_id = u.id
+      JOIN slides s ON sess.slide_id = s.id
+      WHERE sess.completed_at IS NOT NULL
+        AND sess.label IS NOT NULL
+        AND s.ground_truth IS NOT NULL
+        AND sess.label != s.ground_truth
+      ORDER BY sess.completed_at DESC
+    `;
+    
+    const result = await pool.query(query);
+    
+    const misclassifications = result.rows.map(row => ({
+      id: row.id,
+      username: row.username,
+      slide_id: row.slide_id,
+      pathologist_label: row.pathologist_label,
+      ground_truth: row.ground_truth,
+      duration_seconds: parseFloat(row.duration_seconds)
+    }));
+    
+    // Get total completed sessions count
+    const totalQuery = `
+      SELECT COUNT(*) as total
+      FROM sessions
+      WHERE completed_at IS NOT NULL
+    `;
+    
+    const totalResult = await pool.query(totalQuery);
+    const totalCompleted = parseInt(totalResult.rows[0].total);
+    
+    console.log(`[ADMIN] Found ${misclassifications.length} misclassifications out of ${totalCompleted} completed sessions`);
+    
+    res.json({
+      data: {
+        misclassifications,
+        total_misclassifications: misclassifications.length,
+        total_completed: totalCompleted
+      }
+    });
+    
+  } catch (error) {
+    console.error('[ADMIN] Error fetching misclassifications:', error);
+    res.status(500).json({ 
+      error: 'Failed to fetch misclassifications' 
+    });
+  }
+});
+
+/**
  * GET /api/admin/export/csv
  * Download all events as CSV
  */

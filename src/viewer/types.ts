@@ -238,3 +238,24 @@ export interface SessionReplayData {
   events: ReplayEvent[];
 }
 
+/**
+ * Misclassification entry
+ */
+export interface Misclassification {
+  id: string;                    // Session UUID
+  username: string;              // Pathologist username
+  slide_id: string;              // Slide identifier
+  pathologist_label: string;     // Label given by pathologist
+  ground_truth: string;          // Correct label
+  duration_seconds: number;      // Time spent on slide (seconds)
+}
+
+/**
+ * Misclassification summary data
+ */
+export interface MisclassificationData {
+  misclassifications: Misclassification[];
+  total_misclassifications: number;
+  total_completed: number;
+}
+

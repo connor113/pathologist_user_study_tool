@@ -16,9 +16,10 @@ import {
   createAdminUser,
   logout,
   getCompletedSessions,
-  getSessionEvents
+  getSessionEvents,
+  getMisclassifications
 } from '../viewer/api';
-import type { UserStats, ProgressStats, CompletedSession, SessionReplayData } from '../viewer/types';
+import type { UserStats, ProgressStats, CompletedSession, SessionReplayData, MisclassificationData } from '../viewer/types';
 
 // Store loaded sessions for the currently selected user
 let cachedSessions: CompletedSession[] = [];
@@ -78,14 +79,16 @@ export async function refreshDashboard(): Promise<void> {
     showLoading();
     
     // Fetch data in parallel
-    const [users, progress] = await Promise.all([
+    const [users, progress, misclassifications] = await Promise.all([
       getAdminUsers(),
-      getAdminProgress()
+      getAdminProgress(),
+      getMisclassifications()
     ]);
     
     // Render UI
     renderStats(progress);
     renderUserTable(users);
+    renderMisclassifications(misclassifications);
     
     // Populate replay user dropdown
     await populateUserDropdown(users);
@@ -179,7 +182,7 @@ function renderUserTable(users: UserStats[]): void {
   if (users.length === 0) {
     tbody.innerHTML = `
       <tr>
-        <td colspan="4" class="empty-state">
+        <td colspan="5" class="empty-state">
           <div class="empty-state-icon">📊</div>
           <div class="empty-state-text">No pathologist users found</div>
         </td>
@@ -224,10 +227,183 @@ function renderUserTable(users: UserStats[]): void {
     `;
     row.appendChild(progressCell);
     
+    // Actions column with Reset Password button
+    const actionsCell = document.createElement('td');
+    const resetBtn = document.createElement('button');
+    resetBtn.textContent = 'Reset';
+    resetBtn.className = 'admin-btn admin-btn-sm';
+    resetBtn.title = 'Reset password for this user';
+    resetBtn.style.cssText = `
+      padding: 4px 10px;
+      font-size: 12px;
+      background: #ffc107;
+      color: #333;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      font-weight: bold;
+      transition: background 0.2s;
+    `;
+    resetBtn.onmouseover = () => {
+      resetBtn.style.background = '#e0a800';
+    };
+    resetBtn.onmouseout = () => {
+      resetBtn.style.background = '#ffc107';
+    };
+    resetBtn.addEventListener('click', async () => {
+      await handleResetPassword(user.id, user.username, resetBtn);
+    });
+    actionsCell.appendChild(resetBtn);
+    
+    // Also add a span for showing the temp password (initially hidden)
+    const passwordResultSpan = document.createElement('span');
+    passwordResultSpan.id = `reset-result-${user.id}`;
+    passwordResultSpan.style.cssText = `
+      margin-left: 8px;
+      font-size: 12px;
+      display: none;
+    `;
+    actionsCell.appendChild(passwordResultSpan);
+    
+    row.appendChild(actionsCell);
+    
     tbody.appendChild(row);
   });
   
   console.log(`[Dashboard] Rendered ${users.length} user rows`);
+}
+
+/**
+ * Render misclassifications table
+ */
+function renderMisclassifications(data: MisclassificationData): void {
+  console.log('[Dashboard] Rendering misclassifications table');
+  
+  const tbody = document.getElementById('misclassifications-table-body');
+  const countSpan = document.getElementById('misclass-count');
+  const totalSpan = document.getElementById('total-completed-count');
+  
+  if (!tbody || !countSpan || !totalSpan) return;
+  
+  // Update summary counts
+  countSpan.textContent = data.total_misclassifications.toString();
+  totalSpan.textContent = data.total_completed.toString();
+  
+  // Clear existing rows
+  tbody.innerHTML = '';
+  
+  // Handle empty state
+  if (data.misclassifications.length === 0) {
+    tbody.innerHTML = `
+      <tr>
+        <td colspan="5" class="empty-state">
+          <div class="empty-state-icon">✅</div>
+          <div class="empty-state-text">No misclassifications found</div>
+        </td>
+      </tr>
+    `;
+    return;
+  }
+  
+  // Create row for each misclassification
+  data.misclassifications.forEach(misclass => {
+    const row = document.createElement('tr');
+    
+    // Pathologist column
+    const pathologistCell = document.createElement('td');
+    pathologistCell.textContent = misclass.username;
+    row.appendChild(pathologistCell);
+    
+    // Slide ID column
+    const slideCell = document.createElement('td');
+    slideCell.textContent = misclass.slide_id;
+    row.appendChild(slideCell);
+    
+    // Their label column
+    const theirLabelCell = document.createElement('td');
+    theirLabelCell.textContent = formatLabel(misclass.pathologist_label);
+    theirLabelCell.style.color = '#dc3545'; // Red for incorrect
+    row.appendChild(theirLabelCell);
+    
+    // Correct label column
+    const correctLabelCell = document.createElement('td');
+    correctLabelCell.textContent = formatLabel(misclass.ground_truth);
+    correctLabelCell.style.color = '#28a745'; // Green for correct
+    row.appendChild(correctLabelCell);
+    
+    // Time spent column
+    const timeCell = document.createElement('td');
+    const minutes = Math.round(misclass.duration_seconds / 60);
+    timeCell.textContent = `${minutes} min`;
+    row.appendChild(timeCell);
+    
+    tbody.appendChild(row);
+  });
+  
+  console.log(`[Dashboard] Rendered ${data.misclassifications.length} misclassifications`);
+}
+
+/**
+ * Format label for display (capitalize first letter)
+ */
+function formatLabel(label: string): string {
+  if (!label) return '';
+  return label.charAt(0).toUpperCase() + label.slice(1);
+}
+
+/**
+ * Handle resetting a user's password
+ */
+async function handleResetPassword(userId: string, username: string, btn: HTMLButtonElement): Promise<void> {
+  const resultSpan = document.getElementById(`reset-result-${userId}`) as HTMLSpanElement;
+  
+  if (!confirm(`Reset password for ${username}? They will need to change it on next login.`)) {
+    return;
+  }
+  
+  try {
+    btn.disabled = true;
+    btn.textContent = '...';
+    if (resultSpan) {
+      resultSpan.style.display = 'none';
+      resultSpan.textContent = '';
+    }
+    
+    const { API_BASE_URL } = await import('../viewer/api');
+    const response = await fetch(`${API_BASE_URL}/api/admin/users/${userId}/reset-password`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      credentials: 'include'
+    });
+    
+    const data = await response.json();
+    
+    if (!response.ok) {
+      throw new Error(data.error || 'Failed to reset password');
+    }
+    
+    console.log(`[Dashboard] Password reset for ${username}`);
+    
+    // Show the new temp password inline
+    if (resultSpan) {
+      resultSpan.innerHTML = `✅ New password: <code style="background:#f0f0f0;padding:2px 6px;border-radius:3px;user-select:all">${data.data.temporaryPassword}</code>`;
+      resultSpan.style.color = '#333';
+      resultSpan.style.display = 'inline';
+    }
+    
+  } catch (error: any) {
+    console.error('[Dashboard] Reset password failed:', error);
+    if (resultSpan) {
+      resultSpan.textContent = `❌ ${error.message || 'Failed'}`;
+      resultSpan.style.color = '#c00';
+      resultSpan.style.display = 'inline';
+    }
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Reset';
+  }
 }
 
 /**
@@ -302,6 +478,18 @@ function setupEventListeners(): void {
   if (viewSlidesBtn) {
     viewSlidesBtn.addEventListener('click', () => {
       if (onViewSlidesCallback) onViewSlidesCallback();
+    });
+  }
+
+  // Admin Change Password button
+  const adminChangePasswordBtn = document.getElementById('admin-change-password-btn');
+  if (adminChangePasswordBtn) {
+    adminChangePasswordBtn.addEventListener('click', async () => {
+      const { ChangePassword } = await import('../viewer/ChangePassword');
+      const changePasswordModal = new ChangePassword(() => {
+        console.log('[Dashboard] Admin password changed successfully');
+      });
+      changePasswordModal.show();
     });
   }
 

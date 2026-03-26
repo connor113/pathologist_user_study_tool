@@ -15,7 +15,8 @@ import type {
   UserStats,
   ProgressStats,
   CompletedSession,
-  SessionReplayData
+  SessionReplayData,
+  MisclassificationData
 } from './types';
 
 // Get API base URL from environment variable, default to local development
@@ -548,5 +549,21 @@ export async function getSessionEvents(sessionId: string): Promise<SessionReplay
   );
   
   console.log(`[API] Loaded ${response.data.events.length} events for session ${sessionId}`);
+  return response.data;
+}
+
+/**
+ * Get misclassifications (sessions where label != ground_truth)
+ * Requires admin authentication
+ * 
+ * @returns Misclassification data with summary counts
+ */
+export async function getMisclassifications(): Promise<MisclassificationData> {
+  const response = await apiCall<APIResponse<MisclassificationData>>(
+    '/api/admin/misclassifications',
+    { method: 'GET' }
+  );
+  
+  console.log(`[API] Loaded ${response.data.total_misclassifications} misclassifications out of ${response.data.total_completed} completed sessions`);
   return response.data;
 }

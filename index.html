@@ -682,6 +682,19 @@
       
       <!-- Footer: Logout button (sticky bottom) -->
       <div id="sidebar-footer">
+        <button id="change-password-btn" style="
+          width: 100%;
+          padding: clamp(5px, 0.7vh, 10px);
+          margin-bottom: clamp(4px, 0.5vh, 8px);
+          background: #667eea;
+          color: white;
+          border: none;
+          border-radius: 4px;
+          font-size: inherit;
+          font-weight: bold;
+          cursor: pointer;
+          transition: background 0.2s;
+        ">Change Password</button>
         <button id="logout-btn">Logout</button>
       </div>
     </div>
@@ -698,6 +711,7 @@
       <div id="admin-header-right">
         <span id="admin-username"></span>
         <button id="btn-view-slides" class="admin-btn" style="margin-right: 8px;">🔬 View Slides</button>
+        <button id="admin-change-password-btn" class="admin-btn" style="margin-right: 8px;">🔑 Change Password</button>
         <button id="admin-logout-btn">Logout</button>
       </div>
     </div>
@@ -735,6 +749,7 @@
             <th>Sessions Started</th>
             <th>Sessions Completed</th>
             <th>Progress</th>
+            <th>Actions</th>
           </tr>
         </thead>
         <tbody id="admin-table-body">
@@ -751,6 +766,35 @@
         <span id="create-user-result" style="font-size: 13px; color: #333;"></span>
       </div>
       <button id="btn-export-csv" class="admin-btn admin-btn-primary">⬇ Download CSV Export</button>
+    </div>
+    
+    <!-- Misclassification Summary Section -->
+    <div id="admin-misclassifications">
+      <div id="misclassifications-header">
+        <h2>Misclassifications</h2>
+        <p>Sessions where pathologist label does not match ground truth</p>
+      </div>
+      
+      <div id="misclassifications-summary" style="margin-bottom: 16px; padding: 12px; background: #f8f9fa; border-radius: 6px;">
+        <strong>Total Misclassifications:</strong> <span id="misclass-count">-</span> / <span id="total-completed-count">-</span> completed sessions
+      </div>
+      
+      <div id="misclassifications-table-container">
+        <table id="misclassifications-table">
+          <thead>
+            <tr>
+              <th>Pathologist</th>
+              <th>Slide ID</th>
+              <th>Their Label</th>
+              <th>Correct Label</th>
+              <th>Time Spent</th>
+            </tr>
+          </thead>
+          <tbody id="misclassifications-table-body">
+            <!-- Rows populated by dashboard.ts -->
+          </tbody>
+        </table>
+      </div>
     </div>
     
     <!-- Session Replay Section -->

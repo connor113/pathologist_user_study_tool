@@ -181,6 +181,129 @@ router.get('/me', async (req: Request, res: Response) => {
 });
 
 /**
+ * POST /api/auth/change-password
+ * Change password for logged-in users
+ * Requires authentication (valid JWT)
+ */
+router.post('/change-password', async (req: Request, res: Response) => {
+  try {
+    // Get token from httpOnly cookie
+    const token = req.cookies?.token;
+    
+    if (!token) {
+      return res.status(401).json({ 
+        error: 'Authentication required' 
+      });
+    }
+    
+    // Verify JWT token
+    const decoded = jwt.verify(token, process.env.JWT_SECRET!) as any;
+    
+    const { currentPassword, newPassword } = req.body;
+    
+    // Validate input
+    if (!currentPassword || !newPassword) {
+      return res.status(400).json({ 
+        error: 'Current password and new password are required' 
+      });
+    }
+    
+    // Validate new password: minimum 6 chars, at least 1 uppercase, 1 lowercase, 1 number
+    if (newPassword.length < 6) {
+      return res.status(400).json({ 
+        error: 'Password must be at least 6 characters' 
+      });
+    }
+    
+    if (!/[A-Z]/.test(newPassword)) {
+      return res.status(400).json({ 
+        error: 'Password must contain at least one uppercase letter' 
+      });
+    }
+    
+    if (!/[a-z]/.test(newPassword)) {
+      return res.status(400).json({ 
+        error: 'Password must contain at least one lowercase letter' 
+      });
+    }
+    
+    if (!/[0-9]/.test(newPassword)) {
+      return res.status(400).json({ 
+        error: 'Password must contain at least one number' 
+      });
+    }
+    
+    console.log(`[AUTH] Change password for user: ${decoded.username}`);
+    
+    // Get current user password hash
+    const userQuery = `
+      SELECT id, username, password_hash, role
+      FROM users 
+      WHERE id = $1
+    `;
+    
+    const userResult = await pool.query(userQuery, [decoded.id]);
+    
+    if (userResult.rows.length === 0) {
+      return res.status(404).json({ 
+        error: 'User not found' 
+      });
+    }
+    
+    const user = userResult.rows[0];
+    
+    // Verify current password
+    const passwordMatch = await bcrypt.compare(currentPassword, user.password_hash);
+    
+    if (!passwordMatch) {
+      console.log(`[AUTH] Invalid current password for user: ${decoded.username}`);
+      return res.status(401).json({ 
+        error: 'Current password is incorrect' 
+      });
+    }
+    
+    // Hash new password
+    const passwordHash = await bcrypt.hash(newPassword, 10);
+    
+    // Update password
+    const updateQuery = `
+      UPDATE users 
+      SET password_hash = $1
+      WHERE id = $2
+      RETURNING id, username, role
+    `;
+    
+    const result = await pool.query(updateQuery, [passwordHash, decoded.id]);
+    
+    if (result.rows.length === 0) {
+      return res.status(404).json({ 
+        error: 'User not found' 
+      });
+    }
+    
+    console.log(`[AUTH] Password changed successfully for user: ${user.username}`);
+    
+    res.json({
+      data: {
+        success: true,
+        message: 'Password changed successfully'
+      }
+    });
+    
+  } catch (error) {
+    console.error('[AUTH] Change password error:', error);
+    if (error instanceof jwt.JsonWebTokenError) {
+      return res.status(401).json({ 
+        error: 'Invalid or expired token' 
+      });
+    }
+    res.status(500).json({ 
+      error: 'Internal server error' 
+    });
+  }
+});
+
+/**
  * POST /api/auth/setup
  * First-login setup: set email and new password
  * Requires authentication (valid JWT with must_change_password=true)
