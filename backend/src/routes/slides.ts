@@ -14,8 +14,23 @@ const router = Router();
 router.use(authenticate);
 
 /**
+ * Simple hash function for seeded randomization
+ * Creates a deterministic number from a string
+ */
+function simpleHash(str: string): number {
+  let hash = 0;
+  for (let i = 0; i < str.length; i++) {
+    const char = str.charCodeAt(i);
+    hash = ((hash << 5) - hash) + char;
+    hash = hash & hash; // Convert to 32-bit integer
+  }
+  return Math.abs(hash);
+}
+
+/**
  * GET /api/slides
  * Get slide list for current user with completion status
+ * Slides are randomized per user using deterministic seeded shuffle
  */
 router.get('/', async (req: Request, res: Response) => {
   try {
@@ -23,7 +38,7 @@ router.get('/', async (req: Request, res: Response) => {
     
     console.log(`[API] Fetching slides for user: ${req.user!.username}`);
     
-    // Get all slides with completion status for this user
+    // Get all slides with completion status for this user (no ORDER BY here)
     const slidesQuery = `
       SELECT 
         s.id,
@@ -41,7 +56,6 @@ router.get('/', async (req: Request, res: Response) => {
         sess.completed_at
       FROM slides s
       LEFT JOIN sessions sess ON s.id = sess.slide_id AND sess.user_id = $1
-      ORDER BY s.uploaded_at ASC
     `;
     
     const result = await pool.query(slidesQuery, [userId]);
@@ -57,15 +71,28 @@ router.get('/', async (req: Request, res: Response) => {
       completed_at: row.completed_at
     }));
     
-    // Count completed slides
-    const completedCount = slides.filter(slide => slide.completed).length;
+    // Implement deterministic shuffle: each slide gets a sort key based on hash(slide.id + user.id)
+    // This ensures each pathologist sees a different but reproducible order
+    const slidesWithSortKeys = slides.map(slide => ({
+      ...slide,
+      sortKey: simpleHash(slide.id + userId)
+    }));
     
-    console.log(`[API] Found ${slides.length} slides, ${completedCount} completed`);
+    // Sort by the deterministic sort key
+    slidesWithSortKeys.sort((a, b) => a.sortKey - b.sortKey);
+    
+    // Remove sort keys from the response
+    const sortedSlides = slidesWithSortKeys.map(({ sortKey, ...slide }) => slide);
+    
+    // Count completed slides
+    const completedCount = sortedSlides.filter(slide => slide.completed).length;
+    
+    console.log(`[API] Found ${sortedSlides.length} slides (randomized per user), ${completedCount} completed`);
     
     res.json({
       data: {
-        slides,
-        total: slides.length,
+        slides: sortedSlides,
+        total: sortedSlides.length,
         completed: completedCount
       }
     });

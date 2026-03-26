@@ -99,9 +99,10 @@ export interface LogEvent {
  * User information from authentication
  */
 export interface User {
-  id: string;           // UUID from database
-  username: string;     // Username for login
-  role: string;         // 'pathologist' or 'admin'
+  id: string;                      // UUID from database
+  username: string;                // Username for login
+  role: string;                    // 'pathologist' or 'admin'
+  must_change_password?: boolean;  // Whether user must complete first-login setup
 }
 
 /**

@@ -30,7 +30,7 @@ router.post('/login', async (req: Request, res: Response) => {
     
     // Find user in database
     const userQuery = `
-      SELECT id, username, password_hash, role 
+      SELECT id, username, password_hash, role, must_change_password 
       FROM users 
       WHERE username = $1
     `;
@@ -61,7 +61,8 @@ router.post('/login', async (req: Request, res: Response) => {
       {
         id: user.id,
         username: user.username,
-        role: user.role
+        role: user.role,
+        must_change_password: user.must_change_password || false
       },
       process.env.JWT_SECRET!,
       { expiresIn: '7d' }
@@ -82,7 +83,8 @@ router.post('/login', async (req: Request, res: Response) => {
         user: {
           id: user.id,
           username: user.username,
-          role: user.role
+          role: user.role,
+          must_change_password: user.must_change_password || false
         }
       }
     });
@@ -174,6 +176,137 @@ router.get('/me', async (req: Request, res: Response) => {
     console.error('[AUTH] Me endpoint error:', error);
     res.status(401).json({ 
       error: 'Invalid or expired token' 
+    });
+  }
+});
+
+/**
+ * POST /api/auth/setup
+ * First-login setup: set email and new password
+ * Requires authentication (valid JWT with must_change_password=true)
+ */
+router.post('/setup', async (req: Request, res: Response) => {
+  try {
+    // Get token from httpOnly cookie
+    const token = req.cookies?.token;
+    
+    if (!token) {
+      return res.status(401).json({ 
+        error: 'Authentication required' 
+      });
+    }
+    
+    // Verify JWT token
+    const decoded = jwt.verify(token, process.env.JWT_SECRET!) as any;
+    
+    const { email, newPassword } = req.body;
+    
+    // Validate input
+    if (!email || !newPassword) {
+      return res.status(400).json({ 
+        error: 'Email and new password are required' 
+      });
+    }
+    
+    // Validate email format (basic regex)
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+      return res.status(400).json({ 
+        error: 'Invalid email format' 
+      });
+    }
+    
+    // Validate password: minimum 6 chars, at least 1 uppercase, 1 lowercase, 1 number
+    if (newPassword.length < 6) {
+      return res.status(400).json({ 
+        error: 'Password must be at least 6 characters' 
+      });
+    }
+    
+    if (!/[A-Z]/.test(newPassword)) {
+      return res.status(400).json({ 
+        error: 'Password must contain at least one uppercase letter' 
+      });
+    }
+    
+    if (!/[a-z]/.test(newPassword)) {
+      return res.status(400).json({ 
+        error: 'Password must contain at least one lowercase letter' 
+      });
+    }
+    
+    if (!/[0-9]/.test(newPassword)) {
+      return res.status(400).json({ 
+        error: 'Password must contain at least one number' 
+      });
+    }
+    
+    console.log(`[AUTH] Setup for user: ${decoded.username}`);
+    
+    // Hash new password
+    const passwordHash = await bcrypt.hash(newPassword, 10);
+    
+    // Update user
+    const updateQuery = `
+      UPDATE users 
+      SET password_hash = $1, email = $2, must_change_password = false
+      WHERE id = $3
+      RETURNING id, username, role, email
+    `;
+    
+    const result = await pool.query(updateQuery, [passwordHash, email, decoded.id]);
+    
+    if (result.rows.length === 0) {
+      return res.status(404).json({ 
+        error: 'User not found' 
+      });
+    }
+    
+    const user = result.rows[0];
+    
+    // Create new JWT token (without must_change_password flag)
+    const newToken = jwt.sign(
+      {
+        id: user.id,
+        username: user.username,
+        role: user.role,
+        must_change_password: false
+      },
+      process.env.JWT_SECRET!,
+      { expiresIn: '7d' }
+    );
+    
+    // Set new httpOnly cookie
+    res.cookie('token', newToken, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'none',
+      maxAge: 7 * 24 * 60 * 60 * 1000 // 7 days
+    });
+    
+    console.log(`[AUTH] Setup completed for user: ${user.username}`);
+    
+    res.json({
+      data: {
+        user: {
+          id: user.id,
+          username: user.username,
+          role: user.role,
+          email: user.email,
+          must_change_password: false
+        }
+      }
+    });
+    
+  } catch (error) {
+    console.error('[AUTH] Setup error:', error);
+    if (error instanceof jwt.JsonWebTokenError) {
+      return res.status(401).json({ 
+        error: 'Invalid or expired token' 
+      });
+    }
+    res.status(500).json({ 
+      error: 'Internal server error' 
     });
   }
 });

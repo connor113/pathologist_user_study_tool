@@ -136,41 +136,47 @@ router.get('/progress', async (req: Request, res: Response) => {
 
 /**
  * POST /api/admin/users
- * Create new pathologist account
+ * Create new pathologist account with auto-generated temporary password
  */
 router.post('/users', async (req: Request, res: Response) => {
   try {
-    const { username, password } = req.body;
+    const { username } = req.body;
     
-    if (!username || !password) {
+    if (!username) {
       return res.status(400).json({ 
-        error: 'Username and password are required' 
-      });
-    }
-    
-    if (password.length < 6) {
-      return res.status(400).json({ 
-        error: 'Password must be at least 6 characters' 
+        error: 'Username is required' 
       });
     }
     
     console.log(`[ADMIN] Creating pathologist account: ${username}`);
     
+    // Generate random temporary password (8 chars: letters + numbers)
+    const generateTempPassword = () => {
+      const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789';
+      let password = '';
+      for (let i = 0; i < 8; i++) {
+        password += chars.charAt(Math.floor(Math.random() * chars.length));
+      }
+      return password;
+    };
+    
+    const tempPassword = generateTempPassword();
+    
     // Hash password
     const bcrypt = await import('bcrypt');
-    const passwordHash = await bcrypt.hash(password, 10);
+    const passwordHash = await bcrypt.hash(tempPassword, 10);
     
-    // Insert new user
+    // Insert new user with must_change_password = true
     const insertQuery = `
-      INSERT INTO users (username, password_hash, role)
-      VALUES ($1, $2, 'pathologist')
-      RETURNING id, username, role, created_at
+      INSERT INTO users (username, password_hash, role, must_change_password)
+      VALUES ($1, $2, 'pathologist', true)
+      RETURNING id, username, role, created_at, must_change_password
     `;
     
     const result = await pool.query(insertQuery, [username, passwordHash]);
     const user = result.rows[0];
     
-    console.log(`[ADMIN] Created pathologist: ${username} (${user.id})`);
+    console.log(`[ADMIN] Created pathologist: ${username} (${user.id}) with temp password`);
     
     res.status(201).json({
       data: {
@@ -178,8 +184,10 @@ router.post('/users', async (req: Request, res: Response) => {
           id: user.id,
           username: user.username,
           role: user.role,
-          created_at: user.created_at
-        }
+          created_at: user.created_at,
+          must_change_password: user.must_change_password
+        },
+        temporary_password: tempPassword
       }
     });
     

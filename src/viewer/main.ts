@@ -9,6 +9,7 @@ import { SlideQueue } from './SlideQueue';
 import { SessionManager } from './SessionManager';
 import { initDashboard, showDashboard, hideDashboard, setOnReplayLoad } from '../admin/dashboard';
 import { initReplay, setOnBack as setReplayOnBack } from '../admin/SessionReplay';
+import { FirstLoginSetup } from './FirstLoginSetup';
 
 // ===== STATE =====
 let manifest: SlideManifest | null = null;
@@ -367,6 +368,59 @@ async function handleLogin(username: string, password: string): Promise<boolean>
     if (user) {
       currentUser = user;
       console.log(`[Auth] Login successful: ${user.username} (${user.role})`);
+      
+      // Check if user needs to complete first-login setup
+      if (user.must_change_password) {
+        console.log('[Auth] User must change password, showing setup form');
+        hideLoadingSpinner();
+        
+        const setupForm = new FirstLoginSetup(async () => {
+          console.log('[Auth] Setup completed, loading app...');
+          showLoadingSpinner('Loading...');
+          
+          // Reload user data after setup
+          const updatedUser = await checkAuth();
+          if (updatedUser && !updatedUser.must_change_password) {
+            currentUser = updatedUser;
+            
+            // Check window size and prompt to maximize if needed
+            checkWindowSize();
+            
+            // Role-based routing (pathologists only since admins won't have must_change_password)
+            if (updatedUser.role === 'pathologist') {
+              console.log('[Auth] Setup complete, showing viewer');
+              updateUserDisplay();
+              showApp();
+              
+              // Show welcome modal on first login
+              if (!localStorage.getItem('welcome_shown_' + updatedUser.id)) {
+                showWelcomeModal();
+              }
+              
+              // Load slides
+              await slideQueue.loadSlides(updatedUser.id);
+              updateProgressDisplay();
+              
+              const firstSlide = slideQueue.getCurrentSlide();
+              if (firstSlide) {
+                console.log(`[Auth] Starting with first slide: ${firstSlide.slide_id}`);
+                await loadSlide(firstSlide.slide_id);
+              } else {
+                console.log('[Auth] All slides completed!');
+                showStudyComplete();
+              }
+            }
+            hideLoadingSpinner();
+          } else {
+            console.error('[Auth] Failed to reload user after setup');
+            showLoginError('Setup failed. Please try logging in again.');
+            hideLoadingSpinner();
+          }
+        });
+        
+        setupForm.show();
+        return true;
+      }
       
       // Check window size and prompt to maximize if needed
       checkWindowSize();
