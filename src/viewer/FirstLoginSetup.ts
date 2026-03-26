@@ -284,7 +284,8 @@ export class FirstLoginSetup {
     
     try {
       // Submit to backend
-      const response = await fetch('/api/auth/setup', {
+      const { API_BASE_URL } = await import('./api');
+      const response = await fetch(`${API_BASE_URL}/api/auth/setup`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
