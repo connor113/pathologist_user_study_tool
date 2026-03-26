@@ -46,6 +46,7 @@ router.get('/', async (req: Request, res: Response) => {
         s.s3_key_prefix,
         s.manifest_json,
         s.uploaded_at,
+        s.ground_truth,
         CASE 
           WHEN sess.completed_at IS NOT NULL THEN true 
           ELSE false 
@@ -64,6 +65,7 @@ router.get('/', async (req: Request, res: Response) => {
       id: row.id,
       slide_id: row.slide_id,
       s3_key_prefix: row.s3_key_prefix,
+      ground_truth: row.ground_truth,
       completed: row.completed,
       session_id: row.session_id,
       label: row.label,

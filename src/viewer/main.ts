@@ -137,6 +137,18 @@ btnInfo?.addEventListener('click', () => {
   showWelcomeModal();
 });
 
+// Help modal
+const btnHelp = document.getElementById('btn-help');
+btnHelp?.addEventListener('click', () => {
+  const modal = document.getElementById('help-modal');
+  if (modal) modal.style.display = 'flex';
+});
+const helpModalBtn = document.getElementById('help-modal-btn');
+helpModalBtn?.addEventListener('click', () => {
+  const modal = document.getElementById('help-modal');
+  if (modal) modal.style.display = 'none';
+});
+
 // ===== UI HELPERS =====
 function showLogin() {
   const loginContainer = document.getElementById('login-container');
@@ -935,18 +947,19 @@ function updateViewerState(viewer: OpenSeadragon.Viewer) {
 
 // ===== UPDATE DEBUG UI =====
 function updateDebugUI() {
-  // Update current zoom level
-  const zoomEl = document.getElementById('current-zoom');
-  if (zoomEl && viewerState) {
-    zoomEl.textContent = `${viewerState.currentZoomMag}×`;
+  // Update slide info for admin
+  const slideIdEl = document.getElementById('current-slide-id');
+  if (slideIdEl && manifest) {
+    slideIdEl.textContent = manifest.slide_id;
   }
   
-  // Fit calculation removed - no longer needed since we always fit entire slide
-  
-  // Update DZI level
-  const gridDimsEl = document.getElementById('grid-dims');
-  if (gridDimsEl && viewerState) {
-    gridDimsEl.textContent = `DZI Level ${viewerState.currentDziLevel}`;
+  const gtEl = document.getElementById('current-ground-truth');
+  if (gtEl) {
+    const currentSlide = slideQueue.getCurrentSlide();
+    if (currentSlide) {
+      // ground_truth might be on the slide object from the API
+      gtEl.textContent = (currentSlide as any).ground_truth || '-';
+    }
   }
   
   // Update magnification display in side panel

@@ -572,6 +572,84 @@
     </div>
   </div>
 
+  <!-- Help/Instructions Modal -->
+  <div id="help-modal" style="
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    background: rgba(0, 0, 0, 0.6);
+    display: none;
+    justify-content: center;
+    align-items: center;
+    z-index: 10001;
+  ">
+    <div style="
+      background: white;
+      padding: 36px 40px;
+      border-radius: 12px;
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+      max-width: 560px;
+      width: 90%;
+      max-height: 80vh;
+      overflow-y: auto;
+    ">
+      <h2 style="margin: 0 0 16px 0; color: #333; font-size: 22px;">How to Use This Tool</h2>
+      
+      <div style="margin-bottom: 16px;">
+        <h3 style="margin: 0 0 8px 0; color: #667eea; font-size: 16px;">🔍 Viewing Slides</h3>
+        <ul style="margin: 0; padding-left: 20px; color: #555; font-size: 14px; line-height: 1.7;">
+          <li><strong>Zoom in/out:</strong> Scroll wheel or pinch gesture</li>
+          <li><strong>Pan:</strong> Click and drag, or use the arrow buttons</li>
+          <li><strong>Reset view:</strong> Click "↺ Reset" to return to the overview</li>
+          <li><strong>Go back:</strong> Click "← Back" to undo your last zoom/pan</li>
+        </ul>
+      </div>
+
+      <div style="margin-bottom: 16px;">
+        <h3 style="margin: 0 0 8px 0; color: #667eea; font-size: 16px;">🏷️ Making a Diagnosis</h3>
+        <ul style="margin: 0; padding-left: 20px; color: #555; font-size: 14px; line-height: 1.7;">
+          <li>Examine the slide at whatever magnification you need</li>
+          <li>Select one of the three diagnostic categories on the right</li>
+          <li>Optionally add notes about the slide</li>
+          <li>Click <strong>"Confirm & Next"</strong> to submit and move to the next slide</li>
+        </ul>
+      </div>
+
+      <div style="margin-bottom: 16px;">
+        <h3 style="margin: 0 0 8px 0; color: #667eea; font-size: 16px;">📊 Your Progress</h3>
+        <ul style="margin: 0; padding-left: 20px; color: #555; font-size: 14px; line-height: 1.7;">
+          <li>Your progress is shown at the top of the sidebar</li>
+          <li>You can close the browser and return later — your progress is saved</li>
+          <li>Each slide only needs to be reviewed once</li>
+        </ul>
+      </div>
+
+      <div style="margin-bottom: 20px;">
+        <h3 style="margin: 0 0 8px 0; color: #667eea; font-size: 16px;">💡 Tips</h3>
+        <ul style="margin: 0; padding-left: 20px; color: #555; font-size: 14px; line-height: 1.7;">
+          <li>Take your time — there is no time limit per slide</li>
+          <li>Your viewing behaviour is recorded for research purposes</li>
+          <li>Maximise your browser window for the best experience</li>
+        </ul>
+      </div>
+
+      <button id="help-modal-btn" style="
+        width: 100%;
+        padding: 14px;
+        background: #667eea;
+        color: white;
+        border: none;
+        border-radius: 6px;
+        font-size: 16px;
+        font-weight: bold;
+        cursor: pointer;
+        transition: background 0.2s;
+      ">Got it</button>
+    </div>
+  </div>
+
   <!-- Login screen -->
   <div id="login-container">
     <div id="login-form">
@@ -625,7 +703,26 @@
         
         <!-- Controls section -->
         <section>
-          <h3>Navigation</h3>
+          <h3 style="display: flex; align-items: center; gap: 6px;">
+            Navigation
+            <button id="btn-help" title="How to use this tool" style="
+              background: none;
+              border: 1px solid #999;
+              border-radius: 50%;
+              width: 18px;
+              height: 18px;
+              font-size: 12px;
+              line-height: 1;
+              cursor: pointer;
+              color: #667eea;
+              font-weight: bold;
+              padding: 0;
+              display: inline-flex;
+              align-items: center;
+              justify-content: center;
+              flex-shrink: 0;
+            ">?</button>
+          </h3>
           <button id="btn-back" class="sidebar-btn" disabled>← Back</button>
           <button id="btn-reset" class="sidebar-btn">↺ Reset</button>
         </section>
@@ -670,12 +767,10 @@
         
         <!-- Debug info section (admin only) -->
         <section id="debug-section" style="display: none;">
-          <h3>Info</h3>
+          <h3>Slide Info</h3>
           <div id="debug-info">
-            <div><strong>Zoom:</strong> <span id="current-zoom">Loading...</span></div>
-            <div><strong>Fits at 5×:</strong> <span id="fit-status">?</span></div>
-            <div><strong>Start level:</strong> <span id="start-level">?</span></div>
-            <div><strong>Grid:</strong> <span id="grid-dims">?</span></div>
+            <div><strong>Slide ID:</strong> <span id="current-slide-id">-</span></div>
+            <div><strong>Ground Truth:</strong> <span id="current-ground-truth">-</span></div>
           </div>
         </section>
       </div>
