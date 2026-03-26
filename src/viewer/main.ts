@@ -246,12 +246,10 @@ function hideLoginError() {
 }
 
 function updateUserDisplay() {
-  // Show debug section only for admin users
-  if (currentUser && currentUser.role === 'admin') {
-    const debugSection = document.getElementById('debug-section');
-    if (debugSection) {
-      debugSection.style.display = 'block';
-    }
+  const debugSection = document.getElementById('debug-section');
+  if (debugSection) {
+    // Only show slide info section for admin users
+    debugSection.style.display = (currentUser && currentUser.role === 'admin') ? 'block' : 'none';
   }
 }
 
