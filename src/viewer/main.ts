@@ -263,6 +263,24 @@ function updateProgressDisplay() {
   }
 }
 
+function showAdminBackButton() {
+  // Remove existing back button if any
+  const existing = document.getElementById('admin-back-btn');
+  if (existing) existing.remove();
+  
+  const btn = document.createElement('button');
+  btn.id = 'admin-back-btn';
+  btn.textContent = '← Back to Dashboard';
+  btn.style.cssText = 'position:fixed;top:12px;left:12px;z-index:9999;padding:8px 16px;background:#2c3e50;color:white;border:none;border-radius:6px;cursor:pointer;font-size:13px;box-shadow:0 2px 6px rgba(0,0,0,0.2);';
+  btn.addEventListener('click', () => {
+    btn.remove();
+    const appContainer = document.getElementById('app-container');
+    if (appContainer) appContainer.classList.remove('visible');
+    showDashboard();
+  });
+  document.body.appendChild(btn);
+}
+
 function showStudyComplete() {
   const viewerElement = document.getElementById('viewer');
   if (viewerElement) {
@@ -435,11 +453,22 @@ async function handleLogin(username: string, password: string): Promise<boolean>
         setupReplayCallbacks();
         
         // Allow admin to view slides like a pathologist
-        setOnViewSlides(() => {
+        setOnViewSlides(async () => {
           console.log('[Auth] Admin switching to slide viewer');
           hideDashboard();
           updateUserDisplay();
           showApp();
+          
+          // Load slides for admin
+          await slideQueue.loadSlides(user.id);
+          updateProgressDisplay();
+          const firstSlide = slideQueue.getCurrentSlide();
+          if (firstSlide) {
+            await loadSlide(firstSlide.slide_id);
+          }
+          
+          // Show a back-to-dashboard button
+          showAdminBackButton();
         });
         
         await initDashboard(user.username);
@@ -549,11 +578,22 @@ async function initAuth() {
         setupReplayCallbacks();
         
         // Allow admin to view slides like a pathologist
-        setOnViewSlides(() => {
+        setOnViewSlides(async () => {
           console.log('[Auth] Admin switching to slide viewer');
           hideDashboard();
           updateUserDisplay();
           showApp();
+          
+          // Load slides for admin
+          await slideQueue.loadSlides(user.id);
+          updateProgressDisplay();
+          const firstSlide = slideQueue.getCurrentSlide();
+          if (firstSlide) {
+            await loadSlide(firstSlide.slide_id);
+          }
+          
+          // Show a back-to-dashboard button
+          showAdminBackButton();
         });
         
         await initDashboard(user.username);
