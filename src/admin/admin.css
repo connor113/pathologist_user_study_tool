@@ -303,7 +303,8 @@
   #admin-header,
   #admin-stats,
   #admin-table-container,
-  #admin-actions {
+  #admin-actions,
+  #admin-misclassifications {
     padding-left: 24px;
     padding-right: 24px;
   }
@@ -337,6 +338,82 @@
 
 /* ============================================================================
    Session Replay Section (in Dashboard)
+   ============================================================================ */
+
+/* ============================================================================
+   Misclassifications Section
+   ============================================================================ */
+
+#admin-misclassifications {
+  max-width: 1400px;
+  margin: 0 auto 40px;
+  padding: 0 40px;
+}
+
+#misclassifications-header {
+  display: flex;
+  flex-direction: column;
+  margin-bottom: 16px;
+}
+
+#misclassifications-header h2 {
+  margin: 0;
+  font-size: 22px;
+  font-weight: 600;
+  color: #2c3e50;
+}
+
+#misclassifications-summary {
+  margin-bottom: 16px;
+  padding: 12px 16px;
+  background: #f8f9fa;
+  border-radius: 8px;
+  font-size: 14px;
+  color: #2c3e50;
+}
+
+#misclassifications-table {
+  width: 100%;
+  background: white;
+  border-radius: 12px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+  border-collapse: collapse;
+  overflow: hidden;
+}
+
+#misclassifications-table thead {
+  background: #ecf0f1;
+}
+
+#misclassifications-table th {
+  padding: 16px 20px;
+  text-align: left;
+  font-size: 13px;
+  font-weight: 600;
+  color: #2c3e50;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+#misclassifications-table td {
+  padding: 14px 20px;
+  font-size: 14px;
+  color: #2c3e50;
+  border-bottom: 1px solid #ecf0f1;
+}
+
+#misclassifications-table tr:last-child td {
+  border-bottom: none;
+}
+
+#misclassifications-table .empty-state {
+  text-align: center;
+  padding: 32px 20px;
+  color: #95a5a6;
+}
+
+/* ============================================================================
+   Session Replay Section
    ============================================================================ */
 
 #admin-replay-section {

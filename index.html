@@ -772,29 +772,27 @@
     <div id="admin-misclassifications">
       <div id="misclassifications-header">
         <h2>Misclassifications</h2>
-        <p>Sessions where pathologist label does not match ground truth</p>
+        <p style="color: #7f8c8d; margin: 4px 0 0;">Sessions where pathologist label does not match ground truth</p>
       </div>
       
-      <div id="misclassifications-summary" style="margin-bottom: 16px; padding: 12px; background: #f8f9fa; border-radius: 6px;">
+      <div id="misclassifications-summary">
         <strong>Total Misclassifications:</strong> <span id="misclass-count">-</span> / <span id="total-completed-count">-</span> completed sessions
       </div>
       
-      <div id="misclassifications-table-container">
-        <table id="misclassifications-table">
-          <thead>
-            <tr>
-              <th>Pathologist</th>
-              <th>Slide ID</th>
-              <th>Their Label</th>
-              <th>Correct Label</th>
-              <th>Time Spent</th>
-            </tr>
-          </thead>
-          <tbody id="misclassifications-table-body">
-            <!-- Rows populated by dashboard.ts -->
-          </tbody>
-        </table>
-      </div>
+      <table id="misclassifications-table">
+        <thead>
+          <tr>
+            <th>Pathologist</th>
+            <th>Slide ID</th>
+            <th>Their Label</th>
+            <th>Correct Label</th>
+            <th>Time Spent</th>
+          </tr>
+        </thead>
+        <tbody id="misclassifications-table-body">
+          <!-- Rows populated by dashboard.ts -->
+        </tbody>
+      </table>
     </div>
     
     <!-- Session Replay Section -->
