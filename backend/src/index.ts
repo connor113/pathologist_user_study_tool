@@ -94,21 +94,43 @@ const bootstrapAdmin = async () => {
 
 await bootstrapAdmin();
 
-// Skip auto-seed — slides are managed via seed-200-slides.cjs script
-// Previous auto-seed deleted all slides on every restart (dangerous!)
-const checkSlides = async () => {
+// Auto-seed 200 slides from CloudFront if table is empty (safe — never deletes)
+const seedSlidesIfEmpty = async () => {
   try {
     const result = await pool.query('SELECT COUNT(*) as count FROM slides');
-    console.log(`[DB] ${result.rows[0].count} slides in database`);
-    if (parseInt(result.rows[0].count) === 0) {
-      console.log('[DB] WARNING: No slides found. Run: node backend/scripts/seed-200-slides.cjs');
+    const count = parseInt(result.rows[0].count);
+    console.log(`[DB] ${count} slides in database`);
+    
+    if (count > 0) {
+      console.log('[DB] Slides already seeded, skipping');
+      return;
     }
+    
+    console.log('[DB] No slides found — seeding 200 study slides from CloudFront...');
+    const { default: selectedSlides } = await import('./seed-slide-list.js');
+    const cfUrl = process.env.CLOUDFRONT_URL || 'https://d28izxa5ffe64k.cloudfront.net';
+    let seeded = 0;
+    
+    for (const { id, groundTruth } of selectedSlides) {
+      try {
+        const res = await fetch(`${cfUrl}/slides/${id}/manifest.json`);
+        if (!res.ok) { console.error(`[DB] Manifest fetch failed for ${id}: ${res.status}`); continue; }
+        const manifest = await res.json();
+        await pool.query(
+          'INSERT INTO slides (slide_id, s3_key_prefix, manifest_json, ground_truth) VALUES ($1, $2, $3::jsonb, $4) ON CONFLICT (slide_id) DO NOTHING',
+          [id, `slides/${id}`, JSON.stringify(manifest), groundTruth]
+        );
+        seeded++;
+        if (seeded % 50 === 0) console.log(`[DB] Seeded ${seeded} slides...`);
+      } catch (err: any) { console.error(`[DB] Seed error ${id}:`, err.message); }
+    }
+    console.log(`[DB] Seeded ${seeded} slides`);
   } catch (err: any) {
-    console.error('[DB] Slide check error:', err.message);
+    console.error('[DB] Seed slides error:', err.message);
   }
 };
 
-await checkSlides();
+await seedSlidesIfEmpty();
 
 // Start server
 const server = app.listen(PORT, () => {
