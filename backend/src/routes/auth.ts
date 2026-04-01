@@ -32,7 +32,7 @@ router.post('/login', async (req: Request, res: Response) => {
     const userQuery = `
       SELECT id, username, password_hash, role, must_change_password 
       FROM users 
-      WHERE username = $1
+      WHERE username = $1 OR email = $1
     `;
     
     const result = await pool.query(userQuery, [username]);

@@ -129,6 +129,9 @@ welcomeModalBtn?.addEventListener('click', () => {
   if (currentUser) {
     localStorage.setItem('welcome_shown_' + currentUser.id, '1');
   }
+  // After dismissing diagnostic criteria, show the controls modal
+  const helpModal = document.getElementById('help-modal');
+  if (helpModal) helpModal.style.display = 'flex';
 });
 
 // Wire up info button to re-show modal
@@ -421,9 +424,14 @@ async function handleLogin(username: string, password: string): Promise<boolean>
               updateUserDisplay();
               showApp();
               
-              // Show welcome modal on first login
+              // Show modals on login
               if (!localStorage.getItem('welcome_shown_' + updatedUser.id)) {
+                // First login: show diagnostic criteria, which chains to controls on dismiss
                 showWelcomeModal();
+              } else {
+                // Returning user: show controls modal directly
+                const helpModal = document.getElementById('help-modal');
+                if (helpModal) helpModal.style.display = 'flex';
               }
               
               // Load slides
@@ -489,9 +497,14 @@ async function handleLogin(username: string, password: string): Promise<boolean>
         updateUserDisplay();
         showApp();
 
-        // Show welcome modal on first login for this user
+        // Show modals on login
         if (!localStorage.getItem('welcome_shown_' + user.id)) {
+          // First login: show diagnostic criteria, which chains to controls on dismiss
           showWelcomeModal();
+        } else {
+          // Returning user: show controls modal directly
+          const helpModal = document.getElementById('help-modal');
+          if (helpModal) helpModal.style.display = 'flex';
         }
         return true;
       }
@@ -614,9 +627,14 @@ async function initAuth() {
         updateUserDisplay();
         showApp();
 
-        // Show welcome modal on first login for this user
+        // Show modals on login
         if (!localStorage.getItem('welcome_shown_' + user.id)) {
+          // First login: show diagnostic criteria, which chains to controls on dismiss
           showWelcomeModal();
+        } else {
+          // Returning user: show controls modal directly
+          const helpModal = document.getElementById('help-modal');
+          if (helpModal) helpModal.style.display = 'flex';
         }
         return true;
       }
