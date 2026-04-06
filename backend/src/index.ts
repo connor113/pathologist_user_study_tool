@@ -94,21 +94,22 @@ const bootstrapAdmin = async () => {
 
 await bootstrapAdmin();
 
-// Auto-seed 200 slides from CloudFront if table is empty (safe — never deletes)
-const seedSlidesIfEmpty = async () => {
+// Auto-seed slides from CloudFront — inserts any missing slides (ON CONFLICT DO NOTHING)
+const seedSlides = async () => {
   try {
     const result = await pool.query('SELECT COUNT(*) as count FROM slides');
     const count = parseInt(result.rows[0].count);
     console.log(`[DB] ${count} slides in database`);
-    
-    if (count > 0) {
-      console.log('[DB] Slides already seeded, skipping');
-      return;
-    }
-    
-    console.log('[DB] No slides found — seeding 200 study slides from CloudFront...');
     const { default: selectedSlides } = await import('./seed-slide-list.js');
     const cfUrl = process.env.CLOUDFRONT_URL || 'https://d28izxa5ffe64k.cloudfront.net';
+
+    // Skip if DB already has the expected number of slides
+    if (count >= selectedSlides.length) {
+      console.log(`[DB] All ${selectedSlides.length} slides already seeded, skipping`);
+      return;
+    }
+
+    console.log(`[DB] Seeding slides (${count} in DB, ${selectedSlides.length} expected)...`);
     let seeded = 0;
     
     for (const { id, groundTruth } of selectedSlides) {
@@ -116,21 +117,21 @@ const seedSlidesIfEmpty = async () => {
         const res = await fetch(`${cfUrl}/slides/${id}/manifest.json`);
         if (!res.ok) { console.error(`[DB] Manifest fetch failed for ${id}: ${res.status}`); continue; }
         const manifest = await res.json();
-        await pool.query(
-          'INSERT INTO slides (slide_id, s3_key_prefix, manifest_json, ground_truth) VALUES ($1, $2, $3::jsonb, $4) ON CONFLICT (slide_id) DO NOTHING',
+        const insertRes = await pool.query(
+          'INSERT INTO slides (slide_id, s3_key_prefix, manifest_json, ground_truth) VALUES ($1, $2, $3::jsonb, $4) ON CONFLICT (slide_id) DO NOTHING RETURNING slide_id',
           [id, `slides/${id}`, JSON.stringify(manifest), groundTruth]
         );
-        seeded++;
-        if (seeded % 50 === 0) console.log(`[DB] Seeded ${seeded} slides...`);
+        if (insertRes.rowCount && insertRes.rowCount > 0) seeded++;
+        if (seeded > 0 && seeded % 50 === 0) console.log(`[DB] Seeded ${seeded} new slides...`);
       } catch (err: any) { console.error(`[DB] Seed error ${id}:`, err.message); }
     }
-    console.log(`[DB] Seeded ${seeded} slides`);
+    console.log(`[DB] Seeded ${seeded} new slides (total now: ${count + seeded})`);
   } catch (err: any) {
     console.error('[DB] Seed slides error:', err.message);
   }
 };
 
-await seedSlidesIfEmpty();
+await seedSlides();
 
 // Start server
 const server = app.listen(PORT, () => {
