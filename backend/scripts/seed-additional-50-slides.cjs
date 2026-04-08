@@ -9,10 +9,6 @@ if (!DATABASE_URL) {
   process.exit(1);
 }
 
-const pool = new Pool({
-  connectionString: DATABASE_URL,
-  ssl: { rejectUnauthorized: false }
-});
 
 const slides = [
   ['CRC_0005', 'non-neoplastic'],
@@ -87,13 +83,23 @@ function fetchManifest(slideId) {
 async function queryWithRetry(sql, params = [], attempts = 5) {
   let lastErr;
   for (let i = 1; i <= attempts; i++) {
+    const pool = new Pool({
+      connectionString: DATABASE_URL,
+      ssl: { rejectUnauthorized: false },
+      max: 1,
+      idleTimeoutMillis: 5000,
+      connectionTimeoutMillis: 15000
+    });
     try {
-      return await pool.query(sql, params);
+      const result = await pool.query(sql, params);
+      await pool.end();
+      return result;
     } catch (err) {
       lastErr = err;
+      try { await pool.end(); } catch {}
       const retryable = ['ECONNRESET', 'ETIMEDOUT', 'EPIPE'].includes(err.code);
-      if (!retryable || i === attempts) throw err;
-      const delay = 1000 * i;
+      if (!retryable || i == attempts) throw err;
+      const delay = 2000 * i;
       console.warn(`DB query failed (${err.code}), retrying in ${delay}ms... [${i}/${attempts}]`);
       await new Promise(r => setTimeout(r, delay));
     }
@@ -133,7 +139,6 @@ async function main() {
   console.log(`Done: ${inserted} inserted, ${skipped} skipped, ${failed} failed`);
   const total = await queryWithRetry('SELECT COUNT(*) as count FROM slides');
   console.log(`Total slides in DB: ${total.rows[0].count}`);
-  await pool.end();
 }
 
 main().catch(e => {
