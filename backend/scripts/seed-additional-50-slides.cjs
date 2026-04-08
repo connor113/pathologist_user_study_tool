@@ -9,6 +9,13 @@ if (!DATABASE_URL) {
   process.exit(1);
 }
 
+const pool = new Pool({
+  connectionString: DATABASE_URL,
+  ssl: { rejectUnauthorized: false },
+  max: 2,
+  idleTimeoutMillis: 30000,
+  connectionTimeoutMillis: 30000
+});
 
 const slides = [
   ['CRC_0005', 'non-neoplastic'],
@@ -80,51 +87,21 @@ function fetchManifest(slideId) {
   });
 }
 
-async function queryWithRetry(sql, params = [], attempts = 5) {
-  let lastErr;
-  for (let i = 1; i <= attempts; i++) {
-    const pool = new Pool({
-      connectionString: DATABASE_URL,
-      ssl: { rejectUnauthorized: false },
-      max: 1,
-      idleTimeoutMillis: 5000,
-      connectionTimeoutMillis: 15000
-    });
-    try {
-      const result = await pool.query(sql, params);
-      await pool.end();
-      return result;
-    } catch (err) {
-      lastErr = err;
-      try { await pool.end(); } catch {}
-      const retryable = ['ECONNRESET', 'ETIMEDOUT', 'EPIPE'].includes(err.code);
-      if (!retryable || i == attempts) throw err;
-      const delay = 2000 * i;
-      console.warn(`DB query failed (${err.code}), retrying in ${delay}ms... [${i}/${attempts}]`);
-      await new Promise(r => setTimeout(r, delay));
-    }
-  }
-  throw lastErr;
-}
-
 async function main() {
-  const existing = await queryWithRetry('SELECT COUNT(*) as count FROM slides');
+  const existing = await pool.query('SELECT COUNT(*) as count FROM slides');
   console.log(`Current slides in DB: ${existing.rows[0].count}`);
 
   let inserted = 0, skipped = 0, failed = 0;
 
   for (const [slideId, groundTruth] of slides) {
     try {
-      const exists = await queryWithRetry('SELECT id FROM slides WHERE slide_id = $1', [slideId]);
-      if (exists.rows.length > 0) {
-        skipped++;
-        continue;
-      }
+      const exists = await pool.query('SELECT id FROM slides WHERE slide_id = $1', [slideId]);
+      if (exists.rows.length > 0) { skipped++; continue; }
 
       const manifest = await fetchManifest(slideId);
       const s3Key = `slides/${slideId}`;
 
-      await queryWithRetry(
+      await pool.query(
         `INSERT INTO slides (slide_id, s3_key_prefix, manifest_json, ground_truth) VALUES ($1, $2, $3, $4)`,
         [slideId, s3Key, JSON.stringify(manifest), groundTruth]
       );
@@ -137,11 +114,9 @@ async function main() {
   }
 
   console.log(`Done: ${inserted} inserted, ${skipped} skipped, ${failed} failed`);
-  const total = await queryWithRetry('SELECT COUNT(*) as count FROM slides');
+  const total = await pool.query('SELECT COUNT(*) as count FROM slides');
   console.log(`Total slides in DB: ${total.rows[0].count}`);
+  await pool.end();
 }
 
-main().catch(e => {
-  console.error(e);
-  process.exit(1);
-});
+main().catch(e => { console.error(e); process.exit(1); });
