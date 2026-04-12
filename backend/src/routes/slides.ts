@@ -160,6 +160,11 @@ router.get('/:slideId/manifest', async (req: Request, res: Response) => {
  */
 router.post('/:slideId/start', async (req: Request, res: Response) => {
   try {
+    // Admins should not create study sessions
+    if (req.user!.role === 'admin') {
+      return res.status(403).json({ error: 'Admin users cannot create study sessions' });
+    }
+
     const { slideId } = req.params;
     const userId = req.user!.id;
     
@@ -273,6 +278,11 @@ router.post('/:slideId/start', async (req: Request, res: Response) => {
  */
 router.post('/sessions/:sessionId/events', async (req: Request, res: Response) => {
   try {
+    // Admins should not submit study data
+    if (req.user!.role === 'admin') {
+      return res.status(403).json({ error: 'Admin users cannot submit study data' });
+    }
+
     const { sessionId } = req.params;
     const { events } = req.body;
     const userId = req.user!.id;
@@ -386,6 +396,11 @@ router.post('/sessions/:sessionId/events', async (req: Request, res: Response) =
  */
 router.post('/sessions/:sessionId/complete', async (req: Request, res: Response) => {
   try {
+    // Admins should not submit study data
+    if (req.user!.role === 'admin') {
+      return res.status(403).json({ error: 'Admin users cannot submit study data' });
+    }
+
     const { sessionId } = req.params;
     const { label } = req.body;
     const userId = req.user!.id;

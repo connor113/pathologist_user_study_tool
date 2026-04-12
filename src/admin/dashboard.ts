@@ -9,11 +9,12 @@
  * - Dashboard refresh
  */
 
-import { 
-  getAdminUsers, 
-  getAdminProgress, 
+import {
+  getAdminUsers,
+  getAdminProgress,
   exportAdminCSV,
   createAdminUser,
+  deleteAdminUser,
   logout,
   getCompletedSessions,
   getSessionEvents,
@@ -82,15 +83,16 @@ export async function refreshDashboard(): Promise<void> {
     const [users, progress, misclassifications] = await Promise.all([
       getAdminUsers(),
       getAdminProgress(),
-      getMisclassifications()
+      getMisclassifications({ user_id: misclassUserId || undefined, page: misclassPage, per_page: 25 })
     ]);
-    
+
     // Render UI
     renderStats(progress);
     renderUserTable(users);
     renderMisclassifications(misclassifications);
-    
-    // Populate replay user dropdown
+
+    // Populate dropdowns
+    populateFilterDropdowns(users);
     await populateUserDropdown(users);
     
     console.log('[Dashboard] Data refreshed successfully');
@@ -264,83 +266,152 @@ function renderUserTable(users: UserStats[]): void {
       display: none;
     `;
     actionsCell.appendChild(passwordResultSpan);
-    
+
+    // Delete button
+    const deleteBtn = document.createElement('button');
+    deleteBtn.textContent = 'Delete';
+    deleteBtn.className = 'admin-btn admin-btn-sm';
+    deleteBtn.title = 'Delete this user and all their data';
+    deleteBtn.style.cssText = `
+      padding: 4px 10px;
+      font-size: 12px;
+      background: #dc3545;
+      color: white;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      font-weight: bold;
+      margin-left: 6px;
+      transition: background 0.2s;
+    `;
+    deleteBtn.onmouseover = () => { deleteBtn.style.background = '#b02a37'; };
+    deleteBtn.onmouseout = () => { deleteBtn.style.background = '#dc3545'; };
+    deleteBtn.addEventListener('click', async () => {
+      await handleDeleteUser(user.id, user.username);
+    });
+    actionsCell.appendChild(deleteBtn);
+
     row.appendChild(actionsCell);
-    
+
     tbody.appendChild(row);
   });
-  
+
   console.log(`[Dashboard] Rendered ${users.length} user rows`);
 }
 
+// Misclassification pagination state
+let misclassPage = 1;
+let misclassUserId = '';
+
+async function fetchAndRenderMisclassifications(): Promise<void> {
+  try {
+    const data = await getMisclassifications({
+      user_id: misclassUserId || undefined,
+      page: misclassPage,
+      per_page: 25
+    });
+    renderMisclassifications(data);
+  } catch (error) {
+    console.error('[Dashboard] Failed to fetch misclassifications:', error);
+  }
+}
+
 /**
- * Render misclassifications table
+ * Render misclassifications grouped by pathologist with collapsible sections
  */
 function renderMisclassifications(data: MisclassificationData): void {
-  console.log('[Dashboard] Rendering misclassifications table');
-  
-  const tbody = document.getElementById('misclassifications-table-body');
+  console.log('[Dashboard] Rendering misclassifications');
+
+  const container = document.getElementById('misclassifications-grouped-body');
   const countSpan = document.getElementById('misclass-count');
   const totalSpan = document.getElementById('total-completed-count');
-  
-  if (!tbody || !countSpan || !totalSpan) return;
-  
-  // Update summary counts
+
+  if (!container || !countSpan || !totalSpan) return;
+
   countSpan.textContent = data.total_misclassifications.toString();
   totalSpan.textContent = data.total_completed.toString();
-  
-  // Clear existing rows
-  tbody.innerHTML = '';
-  
-  // Handle empty state
+
+  container.innerHTML = '';
+
   if (data.misclassifications.length === 0) {
-    tbody.innerHTML = `
-      <tr>
-        <td colspan="5" class="empty-state">
-          <div class="empty-state-icon">✅</div>
-          <div class="empty-state-text">No misclassifications found</div>
-        </td>
-      </tr>
-    `;
+    container.innerHTML = '<div style="text-align:center;padding:20px;color:#7f8c8d;">No misclassifications found</div>';
+    updateMisclassPagination(data);
     return;
   }
-  
-  // Create row for each misclassification
-  data.misclassifications.forEach(misclass => {
-    const row = document.createElement('tr');
-    
-    // Pathologist column
-    const pathologistCell = document.createElement('td');
-    pathologistCell.textContent = misclass.username;
-    row.appendChild(pathologistCell);
-    
-    // Slide ID column
-    const slideCell = document.createElement('td');
-    slideCell.textContent = misclass.slide_id;
-    row.appendChild(slideCell);
-    
-    // Their label column
-    const theirLabelCell = document.createElement('td');
-    theirLabelCell.textContent = formatLabel(misclass.pathologist_label);
-    theirLabelCell.style.color = '#dc3545'; // Red for incorrect
-    row.appendChild(theirLabelCell);
-    
-    // Correct label column
-    const correctLabelCell = document.createElement('td');
-    correctLabelCell.textContent = formatLabel(misclass.ground_truth);
-    correctLabelCell.style.color = '#28a745'; // Green for correct
-    row.appendChild(correctLabelCell);
-    
-    // Time spent column
-    const timeCell = document.createElement('td');
-    const minutes = Math.round(misclass.duration_seconds / 60);
-    timeCell.textContent = `${minutes} min`;
-    row.appendChild(timeCell);
-    
-    tbody.appendChild(row);
+
+  // Group by pathologist
+  const grouped = new Map<string, typeof data.misclassifications>();
+  data.misclassifications.forEach(m => {
+    if (!grouped.has(m.username)) grouped.set(m.username, []);
+    grouped.get(m.username)!.push(m);
   });
-  
-  console.log(`[Dashboard] Rendered ${data.misclassifications.length} misclassifications`);
+
+  grouped.forEach((items, username) => {
+    // Collapsible header
+    const header = document.createElement('div');
+    header.style.cssText = 'display:flex;align-items:center;gap:8px;padding:10px 12px;background:#f8f9fa;border:1px solid #dee2e6;border-radius:6px;margin-bottom:4px;cursor:pointer;user-select:none;';
+    const arrow = document.createElement('span');
+    arrow.textContent = '\u25B6';
+    arrow.style.cssText = 'font-size:11px;transition:transform 0.2s;';
+    header.appendChild(arrow);
+
+    const nameSpan = document.createElement('span');
+    nameSpan.textContent = username;
+    nameSpan.style.fontWeight = 'bold';
+    header.appendChild(nameSpan);
+
+    const countBadge = document.createElement('span');
+    countBadge.textContent = `${items.length} disagreement${items.length !== 1 ? 's' : ''}`;
+    countBadge.style.cssText = 'font-size:12px;background:#dc3545;color:white;padding:2px 8px;border-radius:10px;';
+    header.appendChild(countBadge);
+
+    container.appendChild(header);
+
+    // Detail table (hidden by default)
+    const details = document.createElement('div');
+    details.style.cssText = 'display:none;margin:0 0 8px 0;';
+
+    const table = document.createElement('table');
+    table.style.cssText = 'width:100%;border-collapse:collapse;font-size:13px;';
+    table.innerHTML = `<thead><tr style="background:#eee;"><th style="padding:6px 10px;text-align:left;">Slide</th><th style="padding:6px 10px;text-align:left;">Their Label</th><th style="padding:6px 10px;text-align:left;">Correct</th><th style="padding:6px 10px;text-align:left;">Time</th></tr></thead>`;
+    const tbody = document.createElement('tbody');
+
+    items.forEach(m => {
+      const row = document.createElement('tr');
+      row.style.borderBottom = '1px solid #eee';
+      row.innerHTML = `
+        <td style="padding:6px 10px;">${m.slide_id}</td>
+        <td style="padding:6px 10px;color:#dc3545;">${formatLabel(m.pathologist_label)}</td>
+        <td style="padding:6px 10px;color:#28a745;">${formatLabel(m.ground_truth)}</td>
+        <td style="padding:6px 10px;">${Math.round(m.duration_seconds / 60)} min</td>
+      `;
+      tbody.appendChild(row);
+    });
+
+    table.appendChild(tbody);
+    details.appendChild(table);
+    container.appendChild(details);
+
+    // Toggle
+    header.addEventListener('click', () => {
+      const isOpen = details.style.display !== 'none';
+      details.style.display = isOpen ? 'none' : 'block';
+      arrow.style.transform = isOpen ? '' : 'rotate(90deg)';
+    });
+  });
+
+  updateMisclassPagination(data);
+  console.log(`[Dashboard] Rendered ${data.misclassifications.length} misclassifications in ${grouped.size} groups`);
+}
+
+function updateMisclassPagination(data: MisclassificationData): void {
+  const prevBtn = document.getElementById('misclass-prev-btn') as HTMLButtonElement | null;
+  const nextBtn = document.getElementById('misclass-next-btn') as HTMLButtonElement | null;
+  const pageInfo = document.getElementById('misclass-page-info');
+
+  if (prevBtn) prevBtn.disabled = data.page <= 1;
+  if (nextBtn) nextBtn.disabled = data.page >= data.total_pages;
+  if (pageInfo) pageInfo.textContent = `Page ${data.page} of ${data.total_pages}`;
 }
 
 /**
@@ -404,6 +475,40 @@ async function handleResetPassword(userId: string, username: string, btn: HTMLBu
     btn.disabled = false;
     btn.textContent = 'Reset';
   }
+}
+
+async function handleDeleteUser(userId: string, username: string): Promise<void> {
+  if (!confirm(`DELETE user "${username}" and ALL their data?\nThis cannot be undone.`)) return;
+  if (!confirm(`Are you SURE? This will permanently delete all of ${username}'s sessions and events.`)) return;
+
+  try {
+    await deleteAdminUser(userId);
+    alert(`User "${username}" has been deleted.`);
+    await refreshDashboard();
+  } catch (error: any) {
+    alert(`Failed to delete user: ${error.message || 'Unknown error'}`);
+  }
+}
+
+/**
+ * Populate the misclassification and CSV filter dropdowns with pathologist names
+ */
+function populateFilterDropdowns(users: UserStats[]): void {
+  const misclassSelect = document.getElementById('misclass-user-filter') as HTMLSelectElement | null;
+  const csvSelect = document.getElementById('csv-user-filter') as HTMLSelectElement | null;
+
+  [misclassSelect, csvSelect].forEach(select => {
+    if (!select) return;
+    const currentValue = select.value;
+    select.innerHTML = '<option value="">All pathologists</option>';
+    users.forEach(u => {
+      const opt = document.createElement('option');
+      opt.value = u.id;
+      opt.textContent = u.username;
+      select.appendChild(opt);
+    });
+    select.value = currentValue;
+  });
 }
 
 /**
@@ -478,6 +583,34 @@ function setupEventListeners(): void {
   if (viewSlidesBtn) {
     viewSlidesBtn.addEventListener('click', () => {
       if (onViewSlidesCallback) onViewSlidesCallback();
+    });
+  }
+
+  // Misclassification filter dropdown
+  const misclassFilter = document.getElementById('misclass-user-filter') as HTMLSelectElement | null;
+  if (misclassFilter) {
+    misclassFilter.addEventListener('change', () => {
+      misclassUserId = misclassFilter.value;
+      misclassPage = 1;
+      fetchAndRenderMisclassifications();
+    });
+  }
+
+  // Misclassification pagination buttons
+  const misclassPrev = document.getElementById('misclass-prev-btn');
+  if (misclassPrev) {
+    misclassPrev.addEventListener('click', () => {
+      if (misclassPage > 1) {
+        misclassPage--;
+        fetchAndRenderMisclassifications();
+      }
+    });
+  }
+  const misclassNext = document.getElementById('misclass-next-btn');
+  if (misclassNext) {
+    misclassNext.addEventListener('click', () => {
+      misclassPage++;
+      fetchAndRenderMisclassifications();
     });
   }
 
@@ -760,8 +893,10 @@ async function handleCSVExport(): Promise<void> {
       (exportBtn as HTMLButtonElement).disabled = true;
     }
     
-    // Trigger CSV download
-    await exportAdminCSV();
+    // Trigger CSV download (optionally filtered by user)
+    const csvUserFilter = document.getElementById('csv-user-filter') as HTMLSelectElement | null;
+    const selectedUserId = csvUserFilter?.value || undefined;
+    await exportAdminCSV(selectedUserId);
     
     console.log('[Dashboard] CSV export completed');
     

@@ -465,12 +465,30 @@ export async function createAdminUser(
 }
 
 /**
+ * Delete a pathologist user and all their data
+ * Requires admin authentication
+ *
+ * @param userId - UUID of the user to delete
+ * @returns Deleted user info
+ */
+export async function deleteAdminUser(userId: string): Promise<{ id: string; username: string }> {
+  const response = await apiCall<APIResponse<{ deleted_user: { id: string; username: string } }>>(
+    `/api/admin/users/${userId}`,
+    { method: 'DELETE' }
+  );
+  console.log(`[API] Deleted user: ${response.data.deleted_user.username}`);
+  return response.data.deleted_user;
+}
+
+/**
  * Export all events as CSV file
  * Triggers browser download with filename: pathology_events_YYYY-MM-DD.csv
  * Requires admin authentication
  */
-export async function exportAdminCSV(): Promise<void> {
-  const url = `${API_BASE_URL}/api/admin/export/csv`;
+export async function exportAdminCSV(userId?: string): Promise<void> {
+  const url = userId
+    ? `${API_BASE_URL}/api/admin/export/csv?user_id=${encodeURIComponent(userId)}`
+    : `${API_BASE_URL}/api/admin/export/csv`;
   
   console.log(`[API] Downloading CSV export from ${url}`);
   
@@ -558,12 +576,20 @@ export async function getSessionEvents(sessionId: string): Promise<SessionReplay
  * 
  * @returns Misclassification data with summary counts
  */
-export async function getMisclassifications(): Promise<MisclassificationData> {
-  const response = await apiCall<APIResponse<MisclassificationData>>(
-    '/api/admin/misclassifications',
-    { method: 'GET' }
-  );
-  
-  console.log(`[API] Loaded ${response.data.total_misclassifications} misclassifications out of ${response.data.total_completed} completed sessions`);
+export async function getMisclassifications(params?: {
+  user_id?: string;
+  page?: number;
+  per_page?: number;
+}): Promise<MisclassificationData> {
+  const searchParams = new URLSearchParams();
+  if (params?.user_id) searchParams.set('user_id', params.user_id);
+  if (params?.page) searchParams.set('page', String(params.page));
+  if (params?.per_page) searchParams.set('per_page', String(params.per_page));
+  const qs = searchParams.toString();
+  const url = `/api/admin/misclassifications${qs ? '?' + qs : ''}`;
+
+  const response = await apiCall<APIResponse<MisclassificationData>>(url, { method: 'GET' });
+
+  console.log(`[API] Loaded ${response.data.total_misclassifications} misclassifications out of ${response.data.total_completed} completed sessions (page ${response.data.page}/${response.data.total_pages})`);
   return response.data;
 }

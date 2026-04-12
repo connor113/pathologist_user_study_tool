@@ -4,7 +4,7 @@
 
 import OpenSeadragon from 'openseadragon';
 import type { SlideManifest, ViewerState, ZoomHistoryEntry, LogEvent, EventType, User } from './types';
-import { checkAuth, login, logout, getManifest, startSession } from './api';
+import { checkAuth, login, logout, getManifest, startSession, getSlides } from './api';
 import { SlideQueue } from './SlideQueue';
 import { SessionManager } from './SessionManager';
 import { initDashboard, showDashboard, hideDashboard, setOnReplayLoad, setOnViewSlides } from '../admin/dashboard';
@@ -287,11 +287,81 @@ function showAdminBackButton() {
   btn.style.cssText = 'position:fixed;top:12px;left:12px;z-index:9999;padding:8px 16px;background:#2c3e50;color:white;border:none;border-radius:6px;cursor:pointer;font-size:13px;box-shadow:0 2px 6px rgba(0,0,0,0.2);';
   btn.addEventListener('click', () => {
     btn.remove();
+    // Clean up admin slide picker
+    const picker = document.getElementById('admin-slide-picker');
+    if (picker) picker.remove();
+    // Restore diagnosis controls
+    enableDiagnosisControls();
     const appContainer = document.getElementById('app-container');
     if (appContainer) appContainer.classList.remove('visible');
     showDashboard();
   });
   document.body.appendChild(btn);
+}
+
+function showAdminSlidePicker(slides: import('./types').Slide[]) {
+  let picker = document.getElementById('admin-slide-picker');
+  if (!picker) {
+    picker = document.createElement('div');
+    picker.id = 'admin-slide-picker';
+    picker.style.cssText = 'position:fixed;top:60px;left:12px;z-index:9998;background:white;padding:12px 16px;border-radius:8px;box-shadow:0 4px 12px rgba(0,0,0,0.2);display:flex;gap:10px;align-items:center;';
+
+    const label = document.createElement('label');
+    label.textContent = 'Select slide:';
+    label.style.cssText = 'font-weight:bold;font-size:13px;white-space:nowrap;';
+    picker.appendChild(label);
+
+    const select = document.createElement('select');
+    select.id = 'admin-slide-select';
+    select.style.cssText = 'padding:6px 10px;font-size:13px;border-radius:4px;border:1px solid #ccc;min-width:250px;';
+    picker.appendChild(select);
+
+    document.body.appendChild(picker);
+  }
+
+  const select = document.getElementById('admin-slide-select') as HTMLSelectElement;
+  select.innerHTML = '<option value="">Choose a slide...</option>';
+
+  slides.forEach(slide => {
+    const option = document.createElement('option');
+    option.value = slide.slide_id;
+    const status = slide.completed ? ' [completed]' : '';
+    option.textContent = `${slide.slide_id}${status}`;
+    select.appendChild(option);
+  });
+
+  select.onchange = async () => {
+    if (select.value) {
+      await loadSlide(select.value);
+    }
+  };
+}
+
+function disableDiagnosisControls() {
+  const radios = document.querySelectorAll<HTMLInputElement>('input[name="diagnosis"]');
+  radios.forEach(r => { r.disabled = true; });
+  const notesArea = document.getElementById('notes-textarea') as HTMLTextAreaElement | null;
+  if (notesArea) { notesArea.disabled = true; notesArea.placeholder = 'Admin preview mode'; }
+  const confirmBtn = document.getElementById('btn-confirm') as HTMLButtonElement | null;
+  if (confirmBtn) { confirmBtn.disabled = true; confirmBtn.style.opacity = '0.5'; }
+  const infoBtn = document.getElementById('btn-info') as HTMLButtonElement | null;
+  if (infoBtn) { infoBtn.disabled = true; }
+  // Add visual indicator
+  const diagSection = document.querySelector('#sidebar-content section:last-of-type:not(#debug-section)');
+  if (diagSection) { (diagSection as HTMLElement).style.opacity = '0.5'; }
+}
+
+function enableDiagnosisControls() {
+  const radios = document.querySelectorAll<HTMLInputElement>('input[name="diagnosis"]');
+  radios.forEach(r => { r.disabled = false; });
+  const notesArea = document.getElementById('notes-textarea') as HTMLTextAreaElement | null;
+  if (notesArea) { notesArea.disabled = false; notesArea.placeholder = 'Add optional notes...'; }
+  const confirmBtn = document.getElementById('btn-confirm') as HTMLButtonElement | null;
+  if (confirmBtn) { confirmBtn.disabled = false; confirmBtn.style.opacity = '1'; }
+  const infoBtn = document.getElementById('btn-info') as HTMLButtonElement | null;
+  if (infoBtn) { infoBtn.disabled = false; }
+  const diagSection = document.querySelector('#sidebar-content section:last-of-type:not(#debug-section)');
+  if (diagSection) { (diagSection as HTMLElement).style.opacity = '1'; }
 }
 
 function showStudyComplete() {
@@ -470,22 +540,17 @@ async function handleLogin(username: string, password: string): Promise<boolean>
         showDashboard();
         setupReplayCallbacks();
         
-        // Allow admin to view slides like a pathologist
+        // Allow admin to view slides with a picker (no sequential queue)
         setOnViewSlides(async () => {
           console.log('[Auth] Admin switching to slide viewer');
           hideDashboard();
           updateUserDisplay();
           showApp();
-          
-          // Load slides for admin
-          await slideQueue.loadSlides(user.id);
-          updateProgressDisplay();
-          const firstSlide = slideQueue.getCurrentSlide();
-          if (firstSlide) {
-            await loadSlide(firstSlide.slide_id);
-          }
-          
-          // Show a back-to-dashboard button
+
+          // Load all slides for admin picker
+          const { slides } = await getSlides();
+          showAdminSlidePicker(slides);
+          disableDiagnosisControls();
           showAdminBackButton();
         });
         
@@ -600,22 +665,17 @@ async function initAuth() {
         showDashboard();
         setupReplayCallbacks();
         
-        // Allow admin to view slides like a pathologist
+        // Allow admin to view slides with a picker (no sequential queue)
         setOnViewSlides(async () => {
           console.log('[Auth] Admin switching to slide viewer');
           hideDashboard();
           updateUserDisplay();
           showApp();
-          
-          // Load slides for admin
-          await slideQueue.loadSlides(user.id);
-          updateProgressDisplay();
-          const firstSlide = slideQueue.getCurrentSlide();
-          if (firstSlide) {
-            await loadSlide(firstSlide.slide_id);
-          }
-          
-          // Show a back-to-dashboard button
+
+          // Load all slides for admin picker
+          const { slides } = await getSlides();
+          showAdminSlidePicker(slides);
+          disableDiagnosisControls();
           showAdminBackButton();
         });
         
@@ -670,6 +730,9 @@ function logEvent(
     notes?: string | null;
   } = {}
 ) {
+  // Skip event logging for admin users (they are previewing, not participating in the study)
+  if (currentUser?.role === 'admin') return;
+
   if (!manifest || !viewerState) {
     console.warn('Cannot log event: manifest or viewerState not loaded');
     return;
@@ -1510,8 +1573,8 @@ viewer.addHandler('open', async () => {
     };
     console.log(`Saved start state: fit entire slide, center at (${startState.centerX.toFixed(0)}, ${startState.centerY.toFixed(0)})`);
     
-    // Create new session for this slide
-    if (currentSlide && currentUser) {
+    // Create new session for this slide (skip for admin users — they are just previewing)
+    if (currentSlide && currentUser && currentUser.role !== 'admin') {
       try {
         // Use slide_id (string identifier) not id (database UUID)
         const session = await startSession(currentSlide.slide_id);

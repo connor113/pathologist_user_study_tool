@@ -459,21 +459,71 @@ router.post('/users/:userId/reset-password', async (req: Request, res: Response)
 });
 
 /**
+ * DELETE /api/admin/users/:userId
+ * Delete a pathologist user and all their data (sessions, events cascade)
+ */
+router.delete('/users/:userId', async (req: Request, res: Response) => {
+  try {
+    const { userId } = req.params;
+    console.log(`[ADMIN] Deleting user: ${userId} by: ${req.user!.username}`);
+
+    const checkQuery = `SELECT id, username, role FROM users WHERE id = $1`;
+    const checkResult = await pool.query(checkQuery, [userId]);
+
+    if (checkResult.rows.length === 0) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    const targetUser = checkResult.rows[0];
+    if (targetUser.role !== 'pathologist') {
+      return res.status(403).json({ error: 'Cannot delete admin accounts' });
+    }
+
+    const deleteQuery = `DELETE FROM users WHERE id = $1 RETURNING id, username`;
+    const result = await pool.query(deleteQuery, [userId]);
+
+    console.log(`[ADMIN] Deleted user: ${targetUser.username} (${targetUser.id})`);
+
+    res.json({
+      data: {
+        deleted_user: { id: result.rows[0].id, username: result.rows[0].username }
+      }
+    });
+  } catch (error: any) {
+    console.error('[ADMIN] Error deleting user:', error);
+    res.status(500).json({ error: 'Failed to delete user' });
+  }
+});
+
+/**
  * GET /api/admin/misclassifications
  * Get all completed sessions where pathologist label != ground_truth
  */
 router.get('/misclassifications', async (req: Request, res: Response) => {
   try {
-    console.log(`[ADMIN] Fetching misclassifications by: ${req.user!.username}`);
-    
+    const userId = req.query.user_id as string | undefined;
+    const page = Math.max(1, parseInt(req.query.page as string) || 1);
+    const perPage = Math.min(100, Math.max(1, parseInt(req.query.per_page as string) || 25));
+    const offset = (page - 1) * perPage;
+
+    console.log(`[ADMIN] Fetching misclassifications by: ${req.user!.username} (page=${page}, per_page=${perPage}, user_id=${userId || 'all'})`);
+
+    const params: any[] = [];
+    let userFilter = '';
+    if (userId) {
+      params.push(userId);
+      userFilter = `AND sess.user_id = $${params.length}`;
+    }
+
     const query = `
-      SELECT 
+      SELECT
         sess.id,
         u.username,
         s.slide_id,
         sess.label as pathologist_label,
         s.ground_truth,
-        EXTRACT(EPOCH FROM (sess.completed_at - sess.started_at)) as duration_seconds
+        EXTRACT(EPOCH FROM (sess.completed_at - sess.started_at)) as duration_seconds,
+        COUNT(*) OVER() as total_count
       FROM sessions sess
       JOIN users u ON sess.user_id = u.id
       JOIN slides s ON sess.slide_id = s.id
@@ -481,11 +531,17 @@ router.get('/misclassifications', async (req: Request, res: Response) => {
         AND sess.label IS NOT NULL
         AND s.ground_truth IS NOT NULL
         AND sess.label != s.ground_truth
-      ORDER BY sess.completed_at DESC
+        ${userFilter}
+      ORDER BY u.username ASC, sess.completed_at DESC
+      LIMIT $${params.length + 1} OFFSET $${params.length + 2}
     `;
-    
-    const result = await pool.query(query);
-    
+    params.push(perPage, offset);
+
+    const result = await pool.query(query, params);
+
+    const totalCount = result.rows.length > 0 ? parseInt(result.rows[0].total_count) : 0;
+    const totalPages = Math.max(1, Math.ceil(totalCount / perPage));
+
     const misclassifications = result.rows.map(row => ({
       id: row.id,
       username: row.username,
@@ -494,31 +550,39 @@ router.get('/misclassifications', async (req: Request, res: Response) => {
       ground_truth: row.ground_truth,
       duration_seconds: parseFloat(row.duration_seconds)
     }));
-    
+
     // Get total completed sessions count
+    const totalParams: any[] = [];
+    let totalUserFilter = '';
+    if (userId) {
+      totalParams.push(userId);
+      totalUserFilter = `AND user_id = $1`;
+    }
     const totalQuery = `
       SELECT COUNT(*) as total
       FROM sessions
-      WHERE completed_at IS NOT NULL
+      WHERE completed_at IS NOT NULL ${totalUserFilter}
     `;
-    
-    const totalResult = await pool.query(totalQuery);
+    const totalResult = await pool.query(totalQuery, totalParams);
     const totalCompleted = parseInt(totalResult.rows[0].total);
-    
-    console.log(`[ADMIN] Found ${misclassifications.length} misclassifications out of ${totalCompleted} completed sessions`);
-    
+
+    console.log(`[ADMIN] Found ${totalCount} misclassifications out of ${totalCompleted} completed sessions (page ${page}/${totalPages})`);
+
     res.json({
       data: {
         misclassifications,
-        total_misclassifications: misclassifications.length,
-        total_completed: totalCompleted
+        total_misclassifications: totalCount,
+        total_completed: totalCompleted,
+        page,
+        per_page: perPage,
+        total_pages: totalPages
       }
     });
-    
+
   } catch (error) {
     console.error('[ADMIN] Error fetching misclassifications:', error);
-    res.status(500).json({ 
-      error: 'Failed to fetch misclassifications' 
+    res.status(500).json({
+      error: 'Failed to fetch misclassifications'
     });
   }
 });
@@ -529,11 +593,18 @@ router.get('/misclassifications', async (req: Request, res: Response) => {
  */
 router.get('/export/csv', async (req: Request, res: Response) => {
   try {
-    console.log(`[ADMIN] CSV export requested by: ${req.user!.username}`);
-    
-    // Get all events with user and session info
+    const userId = req.query.user_id as string | undefined;
+    console.log(`[ADMIN] CSV export requested by: ${req.user!.username} (user_id=${userId || 'all'})`);
+
+    const params: any[] = [];
+    let userFilter = '';
+    if (userId) {
+      params.push(userId);
+      userFilter = `WHERE sess.user_id = $1`;
+    }
+
     const eventsQuery = `
-      SELECT 
+      SELECT
         e.ts_iso8601,
         e.session_id,
         u.username as user_id,
@@ -561,10 +632,11 @@ router.get('/export/csv', async (req: Request, res: Response) => {
       JOIN sessions sess ON e.session_id = sess.id
       JOIN users u ON sess.user_id = u.id
       JOIN slides s ON sess.slide_id = s.id
+      ${userFilter}
       ORDER BY e.ts_iso8601 ASC
     `;
-    
-    const result = await pool.query(eventsQuery);
+
+    const result = await pool.query(eventsQuery, params);
     
     if (result.rows.length === 0) {
       return res.status(404).json({ 
@@ -600,8 +672,10 @@ router.get('/export/csv', async (req: Request, res: Response) => {
     console.log(`[ADMIN] Generated CSV with ${result.rows.length} events`);
     
     // Set headers for CSV download
+    const date = new Date().toISOString().split('T')[0];
+    const userSuffix = userId && result.rows.length > 0 ? `_${result.rows[0].user_id}` : '';
     res.setHeader('Content-Type', 'text/csv');
-    res.setHeader('Content-Disposition', `attachment; filename="pathology_events_${new Date().toISOString().split('T')[0]}.csv"`);
+    res.setHeader('Content-Disposition', `attachment; filename="pathology_events${userSuffix}_${date}.csv"`);
     
     res.send(csv);
     

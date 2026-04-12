@@ -257,5 +257,8 @@ export interface MisclassificationData {
   misclassifications: Misclassification[];
   total_misclassifications: number;
   total_completed: number;
+  page: number;
+  per_page: number;
+  total_pages: number;
 }
 
