@@ -1,0 +1,15 @@
+user_id,ground_truth,final_label,session_count
+ashish.bansal,high-grade,high-grade,27
+ashish.bansal,high-grade,low-grade,34
+ashish.bansal,low-grade,high-grade,1
+ashish.bansal,low-grade,low-grade,55
+ashish.bansal,low-grade,non-neoplastic,17
+ashish.bansal,non-neoplastic,low-grade,7
+ashish.bansal,non-neoplastic,non-neoplastic,43
+muhammad.aslam,high-grade,high-grade,34
+muhammad.aslam,high-grade,low-grade,50
+muhammad.aslam,low-grade,high-grade,4
+muhammad.aslam,low-grade,low-grade,75
+muhammad.aslam,low-grade,non-neoplastic,16
+muhammad.aslam,non-neoplastic,low-grade,17
+muhammad.aslam,non-neoplastic,non-neoplastic,54

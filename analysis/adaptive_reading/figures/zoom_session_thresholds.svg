@@ -1,0 +1,47 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="920" height="520" viewBox="0 0 920 520">
+<rect width="100%" height="100%" fill="#ffffff"/>
+<style>text{font-family:Arial,Helvetica,sans-serif;fill:#263238}.title{font-size:20px;font-weight:700}.subtitle{font-size:12px;fill:#54656f}.axis{font-size:11px;fill:#54656f}.label{font-size:12px}.value{font-size:11px;fill:#263238}.grid{stroke:#d8dee3;stroke-width:1}.axis-line{stroke:#9aa7b0;stroke-width:1}.note{font-size:10px;fill:#6b7880}</style>
+<text class="title" x="95" y="34">Maximum zoom reached per labelled slide</text>
+<text class="subtitle" x="95" y="55">Most sessions stay at or below 5x; high-resolution inspection is selective.</text>
+<line class="grid" x1="95" x2="880" y1="435.0" y2="435.0"/>
+<text class="axis" x="85" y="439.0" text-anchor="end">0</text>
+<line class="grid" x1="95" x2="880" y1="364.4" y2="364.4"/>
+<text class="axis" x="85" y="368.4" text-anchor="end">20</text>
+<line class="grid" x1="95" x2="880" y1="293.8" y2="293.8"/>
+<text class="axis" x="85" y="297.8" text-anchor="end">40</text>
+<line class="grid" x1="95" x2="880" y1="223.2" y2="223.2"/>
+<text class="axis" x="85" y="227.2" text-anchor="end">60</text>
+<line class="grid" x1="95" x2="880" y1="152.6" y2="152.6"/>
+<text class="axis" x="85" y="156.6" text-anchor="end">80</text>
+<line class="grid" x1="95" x2="880" y1="82.0" y2="82.0"/>
+<text class="axis" x="85" y="86.0" text-anchor="end">100</text>
+<line class="axis-line" x1="95" x2="95" y1="82" y2="435"/>
+<line class="axis-line" x1="95" x2="880" y1="435" y2="435"/>
+<text class="axis" transform="translate(22 258.5) rotate(-90)" text-anchor="middle">% of labelled sessions</text>
+<text class="axis" x="291.2" y="461" text-anchor="middle">muhammad.aslam</text>
+<rect x="211.8" y="213.3" width="36.0" height="221.7" fill="#2364aa"/>
+<text class="value" x="229.8" y="208.3" text-anchor="middle">62.8</text>
+<rect x="252.8" y="303.7" width="36.0" height="131.3" fill="#d98c00"/>
+<text class="value" x="270.8" y="298.7" text-anchor="middle">37.2</text>
+<rect x="293.8" y="391.2" width="36.0" height="43.8" fill="#4d9078"/>
+<text class="value" x="311.8" y="386.2" text-anchor="middle">12.4</text>
+<rect x="334.8" y="423.7" width="36.0" height="11.3" fill="#c44569"/>
+<text class="value" x="352.8" y="418.7" text-anchor="middle">3.2</text>
+<text class="axis" x="683.8" y="461" text-anchor="middle">ashish.bansal</text>
+<rect x="604.2" y="214.4" width="36.0" height="220.6" fill="#2364aa"/>
+<text class="value" x="622.2" y="209.4" text-anchor="middle">62.5</text>
+<rect x="645.2" y="302.6" width="36.0" height="132.4" fill="#d98c00"/>
+<text class="value" x="663.2" y="297.6" text-anchor="middle">37.5</text>
+<rect x="686.2" y="390.9" width="36.0" height="44.1" fill="#4d9078"/>
+<text class="value" x="704.2" y="385.9" text-anchor="middle">12.5</text>
+<rect x="727.2" y="429.4" width="36.0" height="5.6" fill="#c44569"/>
+<text class="value" x="745.2" y="424.4" text-anchor="middle">1.6</text>
+<rect x="95" y="481" width="12" height="12" fill="#2364aa"/>
+<text class="axis" x="113" y="492">Never &gt;5x</text>
+<rect x="305" y="481" width="12" height="12" fill="#d98c00"/>
+<text class="axis" x="323" y="492">Reached 10x+</text>
+<rect x="515" y="481" width="12" height="12" fill="#4d9078"/>
+<text class="axis" x="533" y="492">Reached 20x+</text>
+<rect x="725" y="481" width="12" height="12" fill="#c44569"/>
+<text class="axis" x="743" y="492">Reached 40x</text>
+</svg>

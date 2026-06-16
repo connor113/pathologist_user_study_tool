@@ -1,0 +1,35 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="920" height="520" viewBox="0 0 920 520">
+<rect width="100%" height="100%" fill="#ffffff"/>
+<style>text{font-family:Arial,Helvetica,sans-serif;fill:#263238}.title{font-size:20px;font-weight:700}.subtitle{font-size:12px;fill:#54656f}.axis{font-size:11px;fill:#54656f}.label{font-size:12px}.value{font-size:11px;fill:#263238}.grid{stroke:#d8dee3;stroke-width:1}.axis-line{stroke:#9aa7b0;stroke-width:1}.note{font-size:10px;fill:#6b7880}</style>
+<text class="title" x="95" y="34">High-grade calls are conservative</text>
+<text class="subtitle" x="95" y="55">High-grade precision is high, but recall is low, pointing to undercalling.</text>
+<line class="grid" x1="95" x2="880" y1="435.0" y2="435.0"/>
+<text class="axis" x="85" y="439.0" text-anchor="end">0</text>
+<line class="grid" x1="95" x2="880" y1="364.4" y2="364.4"/>
+<text class="axis" x="85" y="368.4" text-anchor="end">20</text>
+<line class="grid" x1="95" x2="880" y1="293.8" y2="293.8"/>
+<text class="axis" x="85" y="297.8" text-anchor="end">40</text>
+<line class="grid" x1="95" x2="880" y1="223.2" y2="223.2"/>
+<text class="axis" x="85" y="227.2" text-anchor="end">60</text>
+<line class="grid" x1="95" x2="880" y1="152.6" y2="152.6"/>
+<text class="axis" x="85" y="156.6" text-anchor="end">80</text>
+<line class="grid" x1="95" x2="880" y1="82.0" y2="82.0"/>
+<text class="axis" x="85" y="86.0" text-anchor="end">100</text>
+<line class="axis-line" x1="95" x2="95" y1="82" y2="435"/>
+<line class="axis-line" x1="95" x2="880" y1="435" y2="435"/>
+<text class="axis" transform="translate(22 258.5) rotate(-90)" text-anchor="middle">%</text>
+<text class="axis" x="291.2" y="461" text-anchor="middle">ashish.bansal</text>
+<rect x="252.8" y="278.6" width="36.0" height="156.4" fill="#c44569"/>
+<text class="value" x="270.8" y="273.6" text-anchor="middle">44.3</text>
+<rect x="293.8" y="94.7" width="36.0" height="340.3" fill="#2364aa"/>
+<text class="value" x="311.8" y="89.7" text-anchor="middle">96.4</text>
+<text class="axis" x="683.8" y="461" text-anchor="middle">muhammad.aslam</text>
+<rect x="645.2" y="292.0" width="36.0" height="143.0" fill="#c44569"/>
+<text class="value" x="663.2" y="287.0" text-anchor="middle">40.5</text>
+<rect x="686.2" y="119.1" width="36.0" height="315.9" fill="#2364aa"/>
+<text class="value" x="704.2" y="114.1" text-anchor="middle">89.5</text>
+<rect x="95" y="481" width="12" height="12" fill="#c44569"/>
+<text class="axis" x="113" y="492">Recall</text>
+<rect x="305" y="481" width="12" height="12" fill="#2364aa"/>
+<text class="axis" x="323" y="492">Precision</text>
+</svg>

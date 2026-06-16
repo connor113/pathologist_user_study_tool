@@ -1,0 +1,6 @@
+user_id,events,sessions,slides,attempts,labelled_sessions,correct_sessions,accuracy_pct,sessions_with_revisits,label_changes_within_session
+muhammad.aslam,8341,250,250,254,250,163,65.2,4,8
+ashish.bansal,7152,185,185,187,184,125,67.9,2,1
+iftikhar.rana,1124,11,11,12,10,6,60.0,1,0
+alistair.heath,503,8,8,8,7,4,57.1,0,0
+admin,234,2,2,7,1,0,0.0,1,0

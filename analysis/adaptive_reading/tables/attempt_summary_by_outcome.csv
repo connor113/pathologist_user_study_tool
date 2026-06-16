@@ -1,0 +1,5 @@
+user_id,outcome,attempts,median_gap_capped_duration_s,median_idle_adjusted_duration_s,median_active_events,median_cell_clicks,median_zoom_steps,median_viewport_polls,avg_active_events
+ashish.bansal,correct,126,28.0,28.0,17.0,5.0,10.0,13.0,19.66
+ashish.bansal,incorrect,60,30.0,30.0,18.5,5.0,10.5,14.5,21.0
+muhammad.aslam,correct,165,18.0,18.0,16.0,4.0,10.0,8.0,18.38
+muhammad.aslam,incorrect,89,21.0,21.0,19.0,6.0,11.0,9.0,21.45
