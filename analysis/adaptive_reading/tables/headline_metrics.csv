@@ -1,0 +1,22 @@
+name,value,note
+input_csv_rows,17354,Rows read from pathology_events_2026-06-16.csv.
+focus_users,"muhammad.aslam, ashish.bansal",Top two users by labelled sessions.
+muhammad.aslam_labelled_sessions,250,Derived from final non-empty label per user-slide.
+muhammad.aslam_accuracy_pct,65.2,Exact match between final label and ground_truth.
+muhammad.aslam_pct_never_above_5x,62.8,Share of labelled sessions whose max zoom is <=5x.
+muhammad.aslam_pct_reached_20x_plus,12.4,Share of labelled sessions reaching 20x or 40x.
+muhammad.aslam_high_grade_recall_pct,40.5,Recall against ground-truth high-grade slides.
+muhammad.aslam_high_grade_precision_pct,89.5,Precision among high-grade assignments.
+ashish.bansal_labelled_sessions,184,Derived from final non-empty label per user-slide.
+ashish.bansal_accuracy_pct,67.9,Exact match between final label and ground_truth.
+ashish.bansal_pct_never_above_5x,62.5,Share of labelled sessions whose max zoom is <=5x.
+ashish.bansal_pct_reached_20x_plus,12.5,Share of labelled sessions reaching 20x or 40x.
+ashish.bansal_high_grade_recall_pct,44.3,Recall against ground-truth high-grade slides.
+ashish.bansal_high_grade_precision_pct,96.4,Precision among high-grade assignments.
+overlap_overlap_slides,184.0,Two-focus-user overlap analysis.
+overlap_pathologists_agree,160.0,Two-focus-user overlap analysis.
+overlap_pathologists_disagree,24.0,Two-focus-user overlap analysis.
+overlap_agreement_pct,87.0,Two-focus-user overlap analysis.
+overlap_both_correct,109.0,Two-focus-user overlap analysis.
+overlap_one_correct,24.0,Two-focus-user overlap analysis.
+overlap_neither_correct,51.0,Two-focus-user overlap analysis.

@@ -1,0 +1,9 @@
+user_id,cohort,sessions,median_max_zoom,pct_never_above_5x,pct_reached_10x_plus,pct_reached_20x_plus,pct_reached_40x
+ashish.bansal,all_labelled,184,5.0,62.5,37.5,12.5,1.6
+muhammad.aslam,all_labelled,250,5.0,62.8,37.2,12.4,3.2
+ashish.bansal,ground_truth=high-grade,61,5.0,50.8,49.2,16.4,1.6
+ashish.bansal,ground_truth=low-grade,73,5.0,68.5,31.5,9.6,1.4
+ashish.bansal,ground_truth=non-neoplastic,50,5.0,68.0,32.0,12.0,2.0
+muhammad.aslam,ground_truth=high-grade,84,5.0,65.5,34.5,15.5,3.6
+muhammad.aslam,ground_truth=low-grade,95,5.0,67.4,32.6,6.3,2.1
+muhammad.aslam,ground_truth=non-neoplastic,71,5.0,53.5,46.5,16.9,4.2

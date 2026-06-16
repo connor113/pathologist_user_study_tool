@@ -1,0 +1,6 @@
+figure,section,question,chart_type,supports_claim
+zoom_session_thresholds.svg,Low magnification dominates the viewing strategy,How often did pathologists move beyond low/mid magnification?,grouped bar,About 63% of labelled sessions never went above 5x; only about 12% reached 20x+.
+zoom_event_bins.svg,Low magnification dominates the viewing strategy,Where is event time concentrated across the magnification ladder?,grouped bar,Roughly 72-74% of zoomed events sit in the 1x-5x band.
+high_grade_precision_recall.svg,High-grade undercalling is the sharpest diagnostic asymmetry,Are high-grade errors mostly false positives or false negatives?,grouped bar,"High-grade recall is about 40-44%, while precision is about 90-96%."
+active_events_by_outcome.svg,"Effort and error move together, but the signal is modest",Do incorrect diagnoses have more active navigation?,horizontal bar,Incorrect attempts have modestly higher median active-event counts.
+overlap_outcomes.svg,"Agreement is high, but shared wrongness is the useful anomaly","On overlap slides, how often are both observers correct or wrong?",horizontal bar,"Of 184 overlap slides, 109 are both-correct and 51 are neither-correct."

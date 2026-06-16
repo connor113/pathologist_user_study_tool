@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="900" height="460" viewBox="0 0 900 460">
+<rect width="100%" height="100%" fill="#ffffff"/>
+<style>text{font-family:Arial,Helvetica,sans-serif;fill:#263238}.title{font-size:20px;font-weight:700}.subtitle{font-size:12px;fill:#54656f}.axis{font-size:11px;fill:#54656f}.label{font-size:12px}.value{font-size:11px;fill:#263238}.grid{stroke:#d8dee3;stroke-width:1}.axis-line{stroke:#9aa7b0;stroke-width:1}.note{font-size:10px;fill:#6b7880}</style>
+<text class="title" x="230" y="34">Outcomes on slides both focus pathologists labelled</text>
+<text class="subtitle" x="230" y="55">Shared mistakes are common enough to be an experimental-design object, not just noise.</text>
+<line class="grid" x1="230.0" x2="230.0" y1="82" y2="405"/>
+<text class="axis" x="230.0" y="427" text-anchor="middle">0</text>
+<line class="grid" x1="355.0" x2="355.0" y1="82" y2="405"/>
+<text class="axis" x="355.0" y="427" text-anchor="middle">22</text>
+<line class="grid" x1="480.0" x2="480.0" y1="82" y2="405"/>
+<text class="axis" x="480.0" y="427" text-anchor="middle">44</text>
+<line class="grid" x1="605.0" x2="605.0" y1="82" y2="405"/>
+<text class="axis" x="605.0" y="427" text-anchor="middle">66</text>
+<line class="grid" x1="730.0" x2="730.0" y1="82" y2="405"/>
+<text class="axis" x="730.0" y="427" text-anchor="middle">88</text>
+<line class="grid" x1="855.0" x2="855.0" y1="82" y2="405"/>
+<text class="axis" x="855.0" y="427" text-anchor="middle">110</text>
+<line class="axis-line" x1="230" x2="855" y1="405" y2="405"/>
+<text class="label" x="218" y="135.2" text-anchor="end">both correct</text>
+<rect x="230" y="82.0" width="619.3" height="98.3" fill="#d98c00"/>
+<text class="value" x="856.3" y="135.2">109.0</text>
+<text class="label" x="218" y="247.5" text-anchor="end">one correct</text>
+<rect x="230" y="194.3" width="136.4" height="98.3" fill="#d98c00"/>
+<text class="value" x="373.4" y="247.5">24.0</text>
+<text class="label" x="218" y="359.8" text-anchor="end">neither correct</text>
+<rect x="230" y="306.7" width="289.8" height="98.3" fill="#d98c00"/>
+<text class="value" x="526.8" y="359.8">51.0</text>
+<text class="axis" x="542.5" y="448" text-anchor="middle">overlap slides</text>
+</svg>

@@ -1,0 +1,32 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="900" height="460" viewBox="0 0 900 460">
+<rect width="100%" height="100%" fill="#ffffff"/>
+<style>text{font-family:Arial,Helvetica,sans-serif;fill:#263238}.title{font-size:20px;font-weight:700}.subtitle{font-size:12px;fill:#54656f}.axis{font-size:11px;fill:#54656f}.label{font-size:12px}.value{font-size:11px;fill:#263238}.grid{stroke:#d8dee3;stroke-width:1}.axis-line{stroke:#9aa7b0;stroke-width:1}.note{font-size:10px;fill:#6b7880}</style>
+<text class="title" x="230" y="34">Median active events by diagnostic outcome</text>
+<text class="subtitle" x="230" y="55">Incorrect attempts show slightly heavier active navigation, especially for the complete 250-slide user.</text>
+<line class="grid" x1="230.0" x2="230.0" y1="82" y2="405"/>
+<text class="axis" x="230.0" y="427" text-anchor="middle">0</text>
+<line class="grid" x1="355.0" x2="355.0" y1="82" y2="405"/>
+<text class="axis" x="355.0" y="427" text-anchor="middle">4</text>
+<line class="grid" x1="480.0" x2="480.0" y1="82" y2="405"/>
+<text class="axis" x="480.0" y="427" text-anchor="middle">8</text>
+<line class="grid" x1="605.0" x2="605.0" y1="82" y2="405"/>
+<text class="axis" x="605.0" y="427" text-anchor="middle">12</text>
+<line class="grid" x1="730.0" x2="730.0" y1="82" y2="405"/>
+<text class="axis" x="730.0" y="427" text-anchor="middle">16</text>
+<line class="grid" x1="855.0" x2="855.0" y1="82" y2="405"/>
+<text class="axis" x="855.0" y="427" text-anchor="middle">20</text>
+<line class="axis-line" x1="230" x2="855" y1="405" y2="405"/>
+<text class="label" x="218" y="121.1" text-anchor="end">ashish.bansal - correct</text>
+<rect x="230" y="82.0" width="531.2" height="70.2" fill="#4d9078"/>
+<text class="value" x="768.2" y="121.1">17.0</text>
+<text class="label" x="218" y="205.4" text-anchor="end">ashish.bansal - incorrect</text>
+<rect x="230" y="166.2" width="578.1" height="70.2" fill="#4d9078"/>
+<text class="value" x="815.1" y="205.4">18.5</text>
+<text class="label" x="218" y="289.6" text-anchor="end">muhammad.aslam - correct</text>
+<rect x="230" y="250.5" width="500.0" height="70.2" fill="#4d9078"/>
+<text class="value" x="737.0" y="289.6">16.0</text>
+<text class="label" x="218" y="373.9" text-anchor="end">muhammad.aslam - incorrect</text>
+<rect x="230" y="334.8" width="593.8" height="70.2" fill="#4d9078"/>
+<text class="value" x="830.8" y="373.9">19.0</text>
+<text class="axis" x="542.5" y="448" text-anchor="middle">median active events per attempt</text>
+</svg>

@@ -1,0 +1,9 @@
+user_id,zoom_bin,event_count,event_pct
+ashish.bansal,fit_or_below_1x,1050,14.7
+ashish.bansal,low_1x_to_5x,5241,73.5
+ashish.bansal,mid_10x,656,9.2
+ashish.bansal,high_20x_40x,188,2.6
+muhammad.aslam,fit_or_below_1x,1572,18.8
+muhammad.aslam,low_1x_to_5x,5992,71.8
+muhammad.aslam,mid_10x,534,6.4
+muhammad.aslam,high_20x_40x,243,2.9

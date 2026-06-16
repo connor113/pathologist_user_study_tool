@@ -1,0 +1,10 @@
+check,observed,expected,status
+input_csv_rows,17354,17354,pass
+focus_users,"['muhammad.aslam', 'ashish.bansal']","['muhammad.aslam', 'ashish.bansal']",pass
+muhammad.aslam_labelled_sessions,250,250,pass
+ashish.bansal_labelled_sessions,184,184,pass
+overlap_slides,184,184,pass
+pathologists_agree,160,160,pass
+both_correct,109,109,pass
+one_correct,24,24,pass
+neither_correct,51,51,pass
