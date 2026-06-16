@@ -1,0 +1,189 @@
+"""Figure generation. Pure-ish functions: take computed frames, save a PNG."""
+from __future__ import annotations
+
+import os
+import matplotlib
+matplotlib.use("Agg")
+import matplotlib.pyplot as plt
+import numpy as np
+import pandas as pd
+
+from load import GRADE_LABELS
+
+plt.rcParams.update({"figure.dpi": 130, "savefig.dpi": 150, "font.size": 10,
+                     "axes.spines.top": False, "axes.spines.right": False})
+
+_SHORT = {"non-neoplastic": "non-neo", "low-grade": "low", "high-grade": "high"}
+
+
+def _save(fig, figdir, name):
+    os.makedirs(figdir, exist_ok=True)
+    path = os.path.join(figdir, name)
+    fig.tight_layout()
+    fig.savefig(path, bbox_inches="tight")
+    plt.close(fig)
+    return path
+
+
+def fig_confusion(confusions: dict, accuracies: dict, figdir) -> str:
+    """Side-by-side row-normalised confusion heatmaps (rows=GT, cols=chosen)."""
+    n = len(confusions)
+    fig, axes = plt.subplots(1, n, figsize=(5.2 * n, 4.4))
+    if n == 1:
+        axes = [axes]
+    for ax, (reader, cm) in zip(axes, confusions.items()):
+        norm = cm.div(cm.sum(axis=1), axis=0).fillna(0)
+        im = ax.imshow(norm.values, cmap="Blues", vmin=0, vmax=1)
+        ax.set_xticks(range(3)); ax.set_xticklabels([_SHORT[c] for c in GRADE_LABELS])
+        ax.set_yticks(range(3)); ax.set_yticklabels([_SHORT[c] for c in GRADE_LABELS])
+        ax.set_xlabel("chosen label"); ax.set_ylabel("ground truth")
+        ax.set_title(f"{reader}\nacc={accuracies[reader]:.1%}  (n={int(cm.values.sum())})")
+        for i in range(3):
+            for j in range(3):
+                ax.text(j, i, f"{int(cm.values[i, j])}\n{norm.values[i, j]:.0%}",
+                        ha="center", va="center",
+                        color="white" if norm.values[i, j] > 0.5 else "black", fontsize=9)
+        # Highlight the dominant high->low under-grade cell.
+        ax.add_patch(plt.Rectangle((1 - .5, 2 - .5), 1, 1, fill=False, edgecolor="crimson", lw=2.5))
+    fig.suptitle("Confusion: both readers undergrade high-grade -> low-grade (red box)", y=1.02)
+    return _save(fig, figdir, "01_confusion.png")
+
+
+def fig_signed_error(slide_diag: pd.DataFrame, readers, figdir) -> str:
+    """Histogram of signed ordinal grade error (chosen - GT), per reader."""
+    from labels import signed_grade_error
+    fig, ax = plt.subplots(figsize=(7, 4))
+    bins = np.arange(-2.5, 3.5, 1)
+    width = 0.38
+    for k, r in enumerate(readers):
+        d = slide_diag[slide_diag["user_id"] == r]
+        errs = [signed_grade_error(l, g) for l, g in zip(d["label"], d["ground_truth"])]
+        errs = [e for e in errs if not pd.isna(e)]
+        counts, edges = np.histogram(errs, bins=bins)
+        centers = edges[:-1] + 0.5
+        ax.bar(centers + (k - 0.5) * width, counts, width=width, label=r,
+               color=["#3b6fb6", "#d98c3f"][k % 2])
+    ax.axvline(0, color="grey", lw=1)
+    ax.set_xticks([-2, -1, 0, 1, 2])
+    ax.set_xticklabels(["-2\n(under x2)", "-1\nunder", "0\ncorrect", "+1\nover", "+2"])
+    ax.set_xlabel("signed grade error  (chosen − ground truth)")
+    ax.set_ylabel("slides")
+    ax.set_title("Error is one-directional: mass sits left of 0 (systematic under-grading)")
+    ax.legend()
+    return _save(fig, figdir, "02_signed_error.png")
+
+
+def fig_agreement(interrater: dict, readers, figdir) -> str:
+    """The headline bar: reader-reader vs reader-GT agreement, and kappas."""
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(10, 4.2))
+    a, b = readers
+    # left: raw agreement on shared slides
+    rates = [interrater["agree_ab_rate"], interrater["both_correct_rate"]]
+    ax1.bar(["readers agree\nwith each other", "both agree\nwith ground truth"],
+            rates, color=["#2e7d32", "#b0581f"])
+    for i, v in enumerate(rates):
+        ax1.text(i, v + 0.01, f"{v:.0%}", ha="center", fontweight="bold")
+    ax1.set_ylim(0, 1); ax1.set_ylabel("rate")
+    ax1.set_title(f"On {interrater['n_shared']} slides graded by both")
+    # right: kappa
+    ks = [interrater["kappa_ab"], interrater["kappa_a_gt"], interrater["kappa_b_gt"]]
+    ax2.bar([f"{a}\n× {b}", f"{a}\n× GT", f"{b}\n× GT"], ks,
+            color=["#2e7d32", "#777", "#777"])
+    for i, v in enumerate(ks):
+        ax2.text(i, v + 0.01, f"{v:.2f}", ha="center", fontweight="bold")
+    ax2.set_ylabel("Cohen's κ (linear-weighted)")
+    ax2.set_title("Readers agree with each other > with the labels")
+    fig.suptitle("Inter-observer concordance ≫ concordance with reference labels", y=1.02)
+    return _save(fig, figdir, "03_agreement.png")
+
+
+def fig_zoom_usage(feat: pd.DataFrame, tmag: pd.DataFrame, readers, figdir) -> str:
+    """Max-magnification reached per view + total time spent at each rung."""
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(11, 4.2))
+    rungs = sorted(feat["max_zoom"].dropna().unique())
+    x = np.arange(len(rungs)); width = 0.38
+    for k, r in enumerate(readers):
+        d = feat[feat["user_id"] == r]
+        counts = [int((d["max_zoom"] == rg).sum()) for rg in rungs]
+        ax1.bar(x + (k - 0.5) * width, counts, width=width, label=r,
+                color=["#3b6fb6", "#d98c3f"][k % 2])
+    ax1.set_xticks(x); ax1.set_xticklabels([f"{r:g}×" for r in rungs])
+    ax1.set_xlabel("max magnification reached"); ax1.set_ylabel("slide-views")
+    ax1.set_title("Peak power per view: examination lives at 5–10×")
+    ax1.legend()
+
+    # time at magnification (sum seconds), restricted to working rungs
+    work = tmag[tmag["magnification"] >= 2.5]
+    piv = work.groupby(["user_id", "magnification"])["seconds"].sum().unstack(0).fillna(0)
+    mags = piv.index.tolist(); x2 = np.arange(len(mags))
+    for k, r in enumerate(readers):
+        if r in piv.columns:
+            ax2.bar(x2 + (k - 0.5) * width, piv[r].values / 60.0, width=width, label=r,
+                    color=["#3b6fb6", "#d98c3f"][k % 2])
+    ax2.set_xticks(x2); ax2.set_xticklabels([f"{m:g}×" for m in mags])
+    ax2.set_xlabel("magnification"); ax2.set_ylabel("total minutes spent")
+    ax2.set_title("Dwell-time by magnification")
+    ax2.legend()
+    return _save(fig, figdir, "04_zoom_usage.png")
+
+
+def fig_scanpaths(examples: list, figdir) -> str:
+    """examples: list of (title, view_df). Plots viewport-centre trail + clicks."""
+    n = len(examples)
+    fig, axes = plt.subplots(1, n, figsize=(4.2 * n, 4.2))
+    if n == 1:
+        axes = [axes]
+    for ax, (title, g) in zip(axes, examples):
+        c = g.dropna(subset=["center_x0", "center_y0"])
+        ax.plot(c["center_x0"], c["center_y0"], "-o", ms=3, lw=1, color="#3b6fb6", alpha=0.7)
+        if len(c):
+            ax.scatter(c["center_x0"].iloc[0], c["center_y0"].iloc[0], c="green", s=70, zorder=5, label="start")
+            ax.scatter(c["center_x0"].iloc[-1], c["center_y0"].iloc[-1], c="black", s=70, marker="s", zorder=5, label="end")
+        clk = g[(g["event"] == "cell_click")].dropna(subset=["click_x0", "click_y0"])
+        ax.scatter(clk["click_x0"], clk["click_y0"], c="crimson", s=55, marker="X", zorder=6, label="click")
+        ax.set_title(title, fontsize=9)
+        ax.invert_yaxis(); ax.set_aspect("equal", adjustable="datalim")
+        ax.set_xticks([]); ax.set_yticks([])
+    axes[0].legend(loc="upper left", fontsize=7)
+    fig.suptitle("Example scanpaths (viewport-centre trail; level-0 px) — NOT eye-tracking", y=1.02)
+    return _save(fig, figdir, "05_scanpaths.png")
+
+
+def fig_behaviour_by_outcome(feat: pd.DataFrame, figdir) -> str:
+    """On high-grade slides: did undergraded views get less examination than correct ones?"""
+    hg = feat[(feat["ground_truth"] == "high-grade") & feat["committed_label"].notna()].copy()
+    hg["outcome"] = np.where(hg["committed_label"] == "high-grade", "correct\n(→high)",
+                     np.where(hg["committed_label"] == "low-grade", "under\n(→low)", "other"))
+    hg = hg[hg["outcome"] != "other"]
+    metrics = [("active_dwell_s", "active dwell (s)"), ("max_zoom", "max magnification (×)"),
+               ("n_clicks", "clicks"), ("frac_time_ge_10x", "frac. time ≥10×")]
+    fig, axes = plt.subplots(1, 4, figsize=(14, 4))
+    order = ["correct\n(→high)", "under\n(→low)"]
+    for ax, (col, lbl) in zip(axes, metrics):
+        data = [hg[hg["outcome"] == o][col].dropna().values for o in order]
+        bp = ax.boxplot(data, tick_labels=order, showfliers=False, patch_artist=True, widths=0.6)
+        for patch, c in zip(bp["boxes"], ["#2e7d32", "#b0581f"]):
+            patch.set_facecolor(c); patch.set_alpha(0.6)
+        # jittered points
+        for i, d in enumerate(data):
+            ax.scatter(np.random.default_rng(i).normal(i + 1, 0.06, len(d)), d, s=10, c="k", alpha=0.35)
+        ax.set_ylabel(lbl)
+        if col == "active_dwell_s":
+            ax.set_ylim(0, np.nanpercentile(hg["active_dwell_s"], 95))
+    fig.suptitle("High-grade slides: behaviour on correctly-graded vs under-graded views", y=1.02)
+    return _save(fig, figdir, "06_behaviour_by_outcome.png")
+
+
+def fig_shuffle(shuffle: dict, figdir) -> str:
+    """Real next-magnification conditional entropy vs within-view order shuffles."""
+    fig, ax = plt.subplots(figsize=(7, 4))
+    samples = shuffle["h_shuffled_samples"]
+    ax.hist(samples, bins=30, color="#bbb", label="shuffled order")
+    ax.axvline(shuffle["h_real_bits"], color="crimson", lw=2.5,
+               label=f"real order = {shuffle['h_real_bits']:.3f} bits")
+    ax.set_xlabel("H(next magnification | current)  [bits]")
+    ax.set_ylabel("shuffles")
+    ax.set_title(f"Navigation order IS structured: real entropy below all shuffles "
+                 f"(Δ={shuffle['entropy_reduction_bits']:.2f} bits, p={shuffle['p_value']:.3f})")
+    ax.legend()
+    return _save(fig, figdir, "07_shuffle_falsifier.png")

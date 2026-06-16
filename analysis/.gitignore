@@ -1,0 +1,9 @@
+.venv/
+__pycache__/
+*.pyc
+.ipynb_checkpoints/
+.jupyter_cache/
+
+# Data exports stay local (also enforced by the repo-root .gitignore).
+# Place pathology_events_*.csv in data/ to reproduce; it is intentionally not committed.
+data/*.csv
