@@ -105,3 +105,13 @@ Backend `.env`: `DATABASE_URL`, `JWT_SECRET`, `PORT` (3001), `NODE_ENV`, `FRONTE
 - Auth: bcrypt 10 rounds, JWT 7-day expiry, httpOnly SameSite=lax cookies, secure in production
 - Production deployment: Vercel (frontend) + Railway/Render (backend + PostgreSQL) + S3/CloudFront (DZI tiles)
 - Architectural decisions documented in `project_state/decisions.md` (D-0001 through D-0021)
+
+## GBrain Search Guidance
+<!-- gbrain-search-guidance:start -->
+A shared GBrain (semantic knowledge base) on this machine indexes Connor's Obsidian vault (user-study notes, meeting decisions, HCI-chapter thinking) + 211 tiered paper-notes. Use it for cross-repo **knowledge**, not this repo's own code.
+
+- "What did we decide about the user study / slide selection / navigation?" → `gbrain query "<question>"` (or `mcp__gbrain__query`). This app is the subject of the thesis HCI chapter — the vault holds the surrounding analysis and supervisor decisions.
+- "Which papers do gaze-guided / pathologist-attention learning?" → `gbrain search "<topic>"` (Chapter-7 precursor cluster: PEAN, GazeMedSeg, HAT — tiered in `../SecondBrain/phd/reference/paper-library-classification.md`).
+
+For THIS repo's own code + the D-numbered decisions in `project_state/decisions.md`, use Grep/Read — the brain does not index this repo's source. Paper-notes are navigation aids, NOT citable sources.
+<!-- gbrain-search-guidance:end -->
