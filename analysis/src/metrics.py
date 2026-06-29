@@ -9,6 +9,7 @@ from sklearn.metrics import cohen_kappa_score
 from load import GRADE_ORDER, GRADE_LABELS
 from navigation import magnification_sequence
 from load import view_groups
+from labels import to_binary, BINARY_LABELS
 
 
 # ----------------------------------------------------------------------------- accuracy
@@ -84,6 +85,76 @@ def interrater_summary(slide_diag: pd.DataFrame, reader_a: str, reader_b: str) -
         "kappa_a_gt_unweighted": kappa(al, gt, weights=None),
         "kappa_b_gt_unweighted": kappa(bl, gt, weights=None),
     }
+
+
+# ------------------------------------------------------------- binary (cancer y/n) view
+def binary_metrics(slide_diag: pd.DataFrame, reader: str) -> dict:
+    """Cancer-detection (low+high = cancer) confusion + rates for one reader.
+
+    Positive class = cancer; computed on that reader's graded slides.
+    """
+    d = slide_diag[slide_diag["user_id"] == reader]
+    pred = d["label"].map(to_binary)
+    truth = d["ground_truth"].map(to_binary)
+    keep = pred.notna() & truth.notna()
+    pred, truth = pred[keep].values, truth[keep].values
+    tp = int(((pred == "cancer") & (truth == "cancer")).sum())
+    fp = int(((pred == "cancer") & (truth == "non-cancer")).sum())
+    fn = int(((pred == "non-cancer") & (truth == "cancer")).sum())
+    tn = int(((pred == "non-cancer") & (truth == "non-cancer")).sum())
+    n = tp + fp + fn + tn
+    return {
+        "n": n, "tp": tp, "fp": fp, "fn": fn, "tn": tn,
+        "accuracy": (tp + tn) / n if n else np.nan,
+        "precision": tp / (tp + fp) if (tp + fp) else np.nan,
+        "recall": tp / (tp + fn) if (tp + fn) else np.nan,        # sensitivity
+        "specificity": tn / (tn + fp) if (tn + fp) else np.nan,
+        "fp_rate": fp / (fp + tn) if (fp + tn) else np.nan,       # 1 - specificity
+        "fn_rate": fn / (fn + tp) if (fn + tp) else np.nan,       # 1 - recall
+    }
+
+
+def binary_slide_sets(slide_diag: pd.DataFrame, reader: str) -> dict:
+    """Slide_ids that are binary false-positives / false-negatives for a reader."""
+    d = slide_diag[slide_diag["user_id"] == reader].copy()
+    pb = d["label"].map(to_binary); tb = d["ground_truth"].map(to_binary)
+    fp = set(d["slide_id"][(pb == "cancer") & (tb == "non-cancer")])
+    fn = set(d["slide_id"][(pb == "non-cancer") & (tb == "cancer")])
+    return {"fp": fp, "fn": fn}
+
+
+def binary_interrater(slide_diag: pd.DataFrame, reader_a: str, reader_b: str) -> dict:
+    """Binary cancer/non-cancer agreement % and kappa between two readers (shared slides)."""
+    a = slide_diag[slide_diag["user_id"] == reader_a].set_index("slide_id")
+    b = slide_diag[slide_diag["user_id"] == reader_b].set_index("slide_id")
+    shared = a.index.intersection(b.index)
+    al = a.loc[shared, "label"].map(to_binary)
+    bl = b.loc[shared, "label"].map(to_binary)
+    gt = a.loc[shared, "ground_truth"].map(to_binary)
+    keep = al.notna() & bl.notna() & gt.notna()
+    al, bl, gt = al[keep].values, bl[keep].values, gt[keep].values
+    agree = (al == bl)
+    return {
+        "n_shared": int(keep.sum()),
+        "n_agree": int(agree.sum()),
+        "agree_rate": float(agree.mean()) if len(agree) else np.nan,
+        "kappa_ab": float(cohen_kappa_score(al, bl)),
+        "kappa_a_gt": float(cohen_kappa_score(al, gt)),
+        "kappa_b_gt": float(cohen_kappa_score(bl, gt)),
+    }
+
+
+def reader_confusion(slide_diag: pd.DataFrame, reader_a: str, reader_b: str,
+                     binary: bool = False) -> pd.DataFrame:
+    """Confusion of reader A's label (rows) vs reader B's label (cols), shared slides."""
+    a = slide_diag[slide_diag["user_id"] == reader_a].set_index("slide_id")["label"]
+    b = slide_diag[slide_diag["user_id"] == reader_b].set_index("slide_id")["label"]
+    shared = a.index.intersection(b.index)
+    al, bl = a.loc[shared], b.loc[shared]
+    order = GRADE_LABELS
+    if binary:
+        al, bl = al.map(to_binary), bl.map(to_binary); order = BINARY_LABELS
+    return pd.crosstab(al, bl).reindex(index=order, columns=order, fill_value=0)
 
 
 # ------------------------------------------------------------------- B2 shuffle falsifier

@@ -13,6 +13,16 @@ import pandas as pd
 
 from load import GRADE_ORDER, GRADE_LABELS
 
+# Binary "cancer-detection" view of the task: non-neoplastic -> non-cancer,
+# low-grade + high-grade -> cancer (the positive class).
+BINARY_MAP = {"non-neoplastic": "non-cancer", "low-grade": "cancer", "high-grade": "cancer"}
+BINARY_LABELS = ["non-cancer", "cancer"]
+
+
+def to_binary(label):
+    """Collapse a 3-class grade to binary cancer / non-cancer (nan-safe)."""
+    return BINARY_MAP.get(label, np.nan)
+
 
 def committed_label(view_df: pd.DataFrame):
     """Return (label, source) for a single slide-view's committed diagnosis."""

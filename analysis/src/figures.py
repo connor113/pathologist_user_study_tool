@@ -187,3 +187,168 @@ def fig_shuffle(shuffle: dict, figdir) -> str:
                  f"(Δ={shuffle['entropy_reduction_bits']:.2f} bits, p={shuffle['p_value']:.3f})")
     ax.legend()
     return _save(fig, figdir, "07_shuffle_falsifier.png")
+
+
+# ============================ research-question extensions (full dataset) ============
+
+def fig_binary_confusion(bin_metrics: dict, figdir) -> str:
+    """Per-reader cancer-detection (binary) confusion + sensitivity/specificity/FP/FN."""
+    readers = list(bin_metrics)
+    n = len(readers)
+    fig, axes = plt.subplots(1, n, figsize=(4.7 * n, 4.3))
+    if n == 1:
+        axes = [axes]
+    for ax, r in zip(axes, readers):
+        m = bin_metrics[r]
+        M = np.array([[m["tn"], m["fp"]], [m["fn"], m["tp"]]], float)
+        norm = M / M.sum(axis=1, keepdims=True)
+        ax.imshow(norm, cmap="Purples", vmin=0, vmax=1)
+        ax.set_xticks([0, 1]); ax.set_xticklabels(["non-cancer", "cancer"])
+        ax.set_yticks([0, 1]); ax.set_yticklabels(["non-cancer", "cancer"])
+        ax.set_xlabel("reader call"); ax.set_ylabel("ground truth")
+        for i in range(2):
+            for j in range(2):
+                ax.text(j, i, f"{int(M[i, j])}\n{norm[i, j]:.0%}", ha="center", va="center",
+                        color="white" if norm[i, j] > 0.5 else "black")
+        ax.set_title(f"{r}\nsens {m['recall']:.0%} · spec {m['specificity']:.0%} · "
+                     f"prec {m['precision']:.0%}\nFP rate {m['fp_rate']:.0%} · FN rate {m['fn_rate']:.0%}",
+                     fontsize=9)
+    fig.suptitle("Cancer detection (low+high = cancer): errors are about grading, not detection", y=1.05)
+    return _save(fig, figdir, "08_binary_confusion.png")
+
+
+def fig_reader_confusion(cm, readers, figdir) -> str:
+    """Reader-A label (rows) vs reader-B label (cols) on shared slides."""
+    a, b = readers
+    vals = cm.values.astype(float)
+    fig, ax = plt.subplots(figsize=(5.2, 4.6))
+    ax.imshow(vals, cmap="Greens")
+    ax.set_xticks(range(len(cm.columns))); ax.set_xticklabels([_SHORT.get(c, c) for c in cm.columns])
+    ax.set_yticks(range(len(cm.index))); ax.set_yticklabels([_SHORT.get(c, c) for c in cm.index])
+    ax.set_xlabel(f"{b} call"); ax.set_ylabel(f"{a} call")
+    for i in range(vals.shape[0]):
+        for j in range(vals.shape[1]):
+            ax.text(j, i, int(vals[i, j]), ha="center", va="center",
+                    color="white" if vals[i, j] > vals.max() * 0.5 else "black")
+    ax.set_title(f"Reader × reader (n={int(vals.sum())} shared)\noff-diagonal = where they disagree")
+    return _save(fig, figdir, "09_reader_confusion.png")
+
+
+def fig_resolution_reach(feat, readers, figdir) -> str:
+    """Fraction of slide-views whose max magnification reaches each rung."""
+    rungs = [2.5, 5, 10, 20, 40]
+    x = np.arange(len(rungs)); width = 0.38
+    fig, ax = plt.subplots(figsize=(7, 4))
+    for k, r in enumerate(readers):
+        d = feat[feat["user_id"] == r]["max_zoom"].dropna()
+        frac = [float((d >= rg).mean()) for rg in rungs]
+        ax.bar(x + (k - 0.5) * width, frac, width=width, label=r,
+               color=["#3b6fb6", "#d98c3f"][k % 2])
+    ax.set_xticks(x); ax.set_xticklabels([f"≥{g:g}×" for g in rungs])
+    ax.set_ylim(0, 1); ax.set_ylabel("fraction of slide-views")
+    ax.set_title("Zoom depth per view: most never pass 5×; a minority reach 20×")
+    ax.legend()
+    return _save(fig, figdir, "10_resolution_reach.png")
+
+
+def fig_strategy_clusters(cluster_profile, figdir) -> str:
+    """Heatmap: z-scored mean of each navigation feature per strategy cluster."""
+    P = cluster_profile
+    fig, ax = plt.subplots(figsize=(1.0 * len(P.columns) + 2, 0.7 * len(P.index) + 2))
+    im = ax.imshow(P.values, cmap="RdBu_r", vmin=-1.5, vmax=1.5, aspect="auto")
+    ax.set_xticks(range(len(P.columns))); ax.set_xticklabels(P.columns, rotation=40, ha="right", fontsize=8)
+    ax.set_yticks(range(len(P.index))); ax.set_yticklabels(P.index, fontsize=9)
+    for i in range(P.shape[0]):
+        for j in range(P.shape[1]):
+            ax.text(j, i, f"{P.values[i, j]:+.1f}", ha="center", va="center", fontsize=7,
+                    color="white" if abs(P.values[i, j]) > 0.9 else "black")
+    fig.colorbar(im, ax=ax, label="z-scored cluster mean", fraction=0.025)
+    ax.set_title("Navigation strategies: standardized feature profile per cluster")
+    return _save(fig, figdir, "11_strategy_clusters.png")
+
+
+def fig_event_transitions(P, figdir) -> str:
+    """Action-to-action transition probability matrix P(next | current)."""
+    fig, ax = plt.subplots(figsize=(6.6, 5.2))
+    im = ax.imshow(P.values, cmap="Blues", vmin=0, vmax=1)
+    ax.set_xticks(range(len(P.columns))); ax.set_xticklabels(P.columns, rotation=40, ha="right", fontsize=8)
+    ax.set_yticks(range(len(P.index))); ax.set_yticklabels(P.index, fontsize=8)
+    for i in range(P.shape[0]):
+        for j in range(P.shape[1]):
+            if P.values[i, j] > 0.005:
+                ax.text(j, i, f"{P.values[i, j]:.2f}", ha="center", va="center", fontsize=7,
+                        color="white" if P.values[i, j] > 0.5 else "black")
+    ax.set_xlabel("next action"); ax.set_ylabel("current action")
+    fig.colorbar(im, ax=ax, label="P(next | current)", fraction=0.046)
+    ax.set_title("Action transition matrix (viewport polls excluded)")
+    return _save(fig, figdir, "12_event_transitions.png")
+
+
+def fig_colormaps(examples, readers, figdir) -> str:
+    """examples: list of (title, mapA, mapB). Columns: reader A, reader B, overlay."""
+    n = len(examples)
+    fig, axes = plt.subplots(n, 3, figsize=(9, 3.0 * n))
+    if n == 1:
+        axes = axes.reshape(1, 3)
+    a, b = readers
+    for row, (title, mA, mB) in enumerate(examples):
+        for col, (m, name, cmap) in enumerate([(mA, a, "Reds"), (mB, b, "Blues")]):
+            ax = axes[row, col]
+            ax.imshow(m, cmap=cmap); ax.set_xticks([]); ax.set_yticks([])
+            if row == 0:
+                ax.set_title(name, fontsize=9)
+            if col == 0:
+                ax.set_ylabel(title, fontsize=8)
+        ax = axes[row, 2]
+        rgb = np.zeros((*mA.shape, 3))
+        rgb[..., 0] = mA / mA.max() if mA.max() > 0 else mA
+        rgb[..., 2] = mB / mB.max() if mB.max() > 0 else mB
+        ax.imshow(rgb); ax.set_xticks([]); ax.set_yticks([])
+        if row == 0:
+            ax.set_title("overlay (red=A, blue=B, purple=both)", fontsize=8)
+    fig.suptitle("Attention coverage maps (constrained-navigation proxy, NOT eye-tracking)", y=1.0)
+    return _save(fig, figdir, "13_colormaps.png")
+
+
+def fig_overlap_similarity(real, null, figdir, metric="cc") -> str:
+    """Real (same slide, both readers) vs null (mismatched slides) map-similarity."""
+    fig, ax = plt.subplots(figsize=(7, 4))
+    ax.hist(null[metric].dropna(), bins=25, color="#bbb", alpha=0.85, density=True,
+            label="null (mismatched slides)")
+    ax.hist(real[metric].dropna(), bins=25, color="#2e7d32", alpha=0.55, density=True,
+            label="real (same slide)")
+    ax.axvline(real[metric].median(), color="#2e7d32", lw=2, ls="--")
+    ax.axvline(null[metric].median(), color="#555", lw=2, ls="--")
+    ax.set_xlabel(f"coverage-map similarity ({metric})"); ax.set_ylabel("density")
+    ax.set_title(f"Readers attend the same regions above chance "
+                 f"(median {metric} {real[metric].median():.2f} vs null {null[metric].median():.2f})")
+    ax.legend()
+    return _save(fig, figdir, "14_overlap_similarity.png")
+
+
+def fig_resolution_accuracy(feat, figdir) -> str:
+    """3-class accuracy by the max magnification reached in the view (descriptive)."""
+    d = feat[feat["committed_label"].notna()].copy()
+
+    def bucket(z):
+        if pd.isna(z):
+            return None
+        if z <= 5:
+            return "≤5×"
+        if z < 20:
+            return "10×"
+        return "≥20×"
+
+    d["zbucket"] = d["max_zoom"].map(bucket)
+    order = ["≤5×", "10×", "≥20×"]
+    acc = d.groupby("zbucket")["correct"].agg(["mean", "size"]).reindex(order)
+    fig, ax = plt.subplots(figsize=(6, 4))
+    ax.bar(range(len(order)), acc["mean"].values, color="#3b6fb6")
+    for i, (m, nn) in enumerate(zip(acc["mean"], acc["size"])):
+        if not pd.isna(m):
+            ax.text(i, m + 0.01, f"{m:.0%}\n(n={int(nn)})", ha="center", fontsize=9)
+    ax.set_xticks(range(len(order))); ax.set_xticklabels(order)
+    ax.set_ylim(0, 1); ax.set_ylabel("3-class accuracy")
+    ax.set_xlabel("max magnification reached in the view")
+    ax.set_title("Deeper zoom vs correctness (descriptive, not causal)")
+    return _save(fig, figdir, "15_resolution_accuracy.png")
