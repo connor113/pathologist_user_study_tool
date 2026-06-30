@@ -1,24 +1,24 @@
 # Pathologist viewing-behaviour analysis
 
-Exploratory analysis of the two near-complete readers (`muhammad.aslam`, `ashish.bansal`)
-from the study event log, for the Project-B (AdaZoom-MIL extension) insight work.
+Exploratory analysis of the two complete readers (`muhammad.aslam`, `ashish.bansal`, 250
+slides each) from the study event log, for the Project-B (AdaZoom-MIL extension) insight work.
 
-**Read this first:** [`reports/pathologist-viewing-insights-2026-06-16.md`](reports/pathologist-viewing-insights-2026-06-16.md)
-— the synthesised insight memo (also published to gbrain as
-`phd/user-study/two-pathologist-analysis-2026-06-16`).
+**Read this first:** [`reports/pathologist-viewing-insights-2026-06-29.md`](reports/pathologist-viewing-insights-2026-06-29.md)
+— the full-dataset insight memo (supersedes the 2026-06-16 memo, kept for provenance).
 
 ## Layout
 
 ```
-data/      committed event export (pathology_events_2026-06-16.csv)
-src/       load.py · labels.py · navigation.py · metrics.py · figures.py
+data/      committed event export (pathology_events_2026-06-29.csv)
+src/       load.py · labels.py · navigation.py · metrics.py · figures.py · saliency.py
 notebooks/ pathologist_insights.py  (jupytext source) + .ipynb (executed)
-figures/   01..07 PNGs
-reports/   insight memo + results.json + the gbrain page copy
+figures/   01..15 PNGs
+reports/   insight memos + results.json + the gbrain page copy
 ```
 
-The notebook **asserts** every headline number (accuracy 64.8/69.1%, inter-rater 88% vs 60%,
-high→low 48/78 & 29/51, …) so any pipeline drift fails loudly.
+The notebook **asserts** every headline number (3-class acc 65/70%, binary detection 87/88%,
+inter-rater binary κ=0.90 / 3-class κ=0.83 vs reader–GT κ 0.56–0.72, high→low 48/78 & 38/72,
+attention-map CC 0.49 vs 0.05 null, …) so any pipeline drift fails loudly.
 
 ## Run
 
@@ -38,7 +38,7 @@ executed artefact. Read-only w.r.t. the live DB; touches no app code.
 
 ## Data note
 
-`data/pathology_events_2026-06-16.csv` is **not committed** — the repo `.gitignore` excludes
+`data/pathology_events_2026-06-29.csv` is **not committed** — the repo `.gitignore` excludes
 `pathology_events*.csv` (data exports stay local, and the file carries usernames + per-reader
 performance). To reproduce, place the export at `analysis/data/` (the loader also falls back to the
 repo-root copy). Everything else here is committed.

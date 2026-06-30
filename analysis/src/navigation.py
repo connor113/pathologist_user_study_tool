@@ -81,6 +81,19 @@ def magnification_sequence(view_df: pd.DataFrame) -> list:
     return out
 
 
+# Reader *actions* (excludes periodic viewport polls / idle / load markers) — used
+# for event-sequence / strategy motif analysis (Q4).
+ACTION_EVENTS = ["cell_click", "zoom_step", "arrow_pan", "back_step", "label_select", "slide_next"]
+
+
+def action_sequence(view_df: pd.DataFrame, events=ACTION_EVENTS, collapse_repeats: bool = False) -> list:
+    """Ordered list of action-event types in a view (viewport polls / idle excluded)."""
+    s = view_df[view_df["event"].isin(events)]["event"].tolist()
+    if collapse_repeats:
+        s = [e for i, e in enumerate(s) if i == 0 or e != s[i - 1]]
+    return s
+
+
 def view_features(key, view_df: pd.DataFrame) -> dict:
     user, slide, session, attempt = key
     ev = view_df["event"]
