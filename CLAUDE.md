@@ -1,5 +1,9 @@
 # CLAUDE.md
 
+## Future-aware reasoning
+
+Treat model, tool, cost, interface, and job-market claims as dated: verify the current state, state assumptions, consider plausible capability changes, and prefer evidence, evaluations, data judgement, and human responsibility that compound as models improve. Neither static-world assumptions nor AGI hype are evidence; do not redesign a bounded task from release chatter.
+
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
 ## Project Overview
