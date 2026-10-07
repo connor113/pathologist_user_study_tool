@@ -1,3 +1,9 @@
+---
+updated: 2026-09-04
+---
+
+> **Current audit route:** `analysis/reports/2026-09-04-reproduction-and-comparison-audit.md` owns the September 4 numerical reproduction and comparison readiness. The actual export has 20,659 events. The human-AdaZoom comparison and any model trained with pathologist data are not yet completed. Historical decision paths below may describe an older checkout; do not reconstruct absent files as current evidence. Preserve app/data state and consult actual code and analysis artifacts.
+
 # CLAUDE.md
 
 ## Future-aware reasoning

@@ -1,0 +1,351 @@
+{
+  "snapshot": "2026-09-15",
+  "question": "How often does a reader's slide-level diagnosis match the reference label?",
+  "label_rule": "Existing metrics.slide_level_diagnoses(use_fallback=True)",
+  "complete_readers_250_slides": {
+    "muhammad.aslam": {
+      "n": 250,
+      "three_class_correct": 163,
+      "three_class_accuracy": 0.652,
+      "binary_correct": 217,
+      "binary": {
+        "n": 250,
+        "tp": 163,
+        "fp": 17,
+        "fn": 16,
+        "tn": 54,
+        "accuracy": 0.868,
+        "precision": 0.9055555555555556,
+        "recall": 0.9106145251396648,
+        "specificity": 0.7605633802816901,
+        "fp_rate": 0.23943661971830985,
+        "fn_rate": 0.0893854748603352
+      },
+      "grade_disagreements_hidden_by_binary_collapse": 54,
+      "confusion_order": [
+        "non-neoplastic",
+        "low-grade",
+        "high-grade"
+      ],
+      "confusion_rows_reference_columns_reader": [
+        [
+          54,
+          17,
+          0
+        ],
+        [
+          16,
+          75,
+          4
+        ],
+        [
+          0,
+          50,
+          34
+        ]
+      ],
+      "reference_counts": {
+        "non-neoplastic": 71,
+        "low-grade": 95,
+        "high-grade": 84
+      }
+    },
+    "ashish.bansal": {
+      "n": 250,
+      "three_class_correct": 176,
+      "three_class_accuracy": 0.704,
+      "binary_correct": 221,
+      "binary": {
+        "n": 250,
+        "tp": 161,
+        "fp": 11,
+        "fn": 18,
+        "tn": 60,
+        "accuracy": 0.884,
+        "precision": 0.936046511627907,
+        "recall": 0.8994413407821229,
+        "specificity": 0.8450704225352113,
+        "fp_rate": 0.15492957746478872,
+        "fn_rate": 0.1005586592178771
+      },
+      "grade_disagreements_hidden_by_binary_collapse": 45,
+      "confusion_order": [
+        "non-neoplastic",
+        "low-grade",
+        "high-grade"
+      ],
+      "confusion_rows_reference_columns_reader": [
+        [
+          60,
+          11,
+          0
+        ],
+        [
+          18,
+          76,
+          1
+        ],
+        [
+          0,
+          44,
+          40
+        ]
+      ],
+      "reference_counts": {
+        "non-neoplastic": 71,
+        "low-grade": 95,
+        "high-grade": 84
+      }
+    }
+  },
+  "partial_reader_rana_180_slides": {
+    "n": 180,
+    "three_class_correct": 126,
+    "three_class_accuracy": 0.7,
+    "binary_correct": 157,
+    "binary": {
+      "n": 180,
+      "tp": 117,
+      "fp": 10,
+      "fn": 13,
+      "tn": 40,
+      "accuracy": 0.8722222222222222,
+      "precision": 0.9212598425196851,
+      "recall": 0.9,
+      "specificity": 0.8,
+      "fp_rate": 0.2,
+      "fn_rate": 0.1
+    },
+    "grade_disagreements_hidden_by_binary_collapse": 31,
+    "confusion_order": [
+      "non-neoplastic",
+      "low-grade",
+      "high-grade"
+    ],
+    "confusion_rows_reference_columns_reader": [
+      [
+        40,
+        10,
+        0
+      ],
+      [
+        12,
+        53,
+        5
+      ],
+      [
+        1,
+        26,
+        33
+      ]
+    ],
+    "reference_counts": {
+      "non-neoplastic": 50,
+      "low-grade": 70,
+      "high-grade": 60
+    }
+  },
+  "partial_reader_rana_strict_slide_next_sensitivity": {
+    "n": 166,
+    "three_class_correct": 117,
+    "three_class_accuracy": 0.7048192771084337,
+    "binary_correct": 145,
+    "binary": {
+      "n": 166,
+      "tp": 108,
+      "fp": 8,
+      "fn": 13,
+      "tn": 37,
+      "accuracy": 0.8734939759036144,
+      "precision": 0.9310344827586207,
+      "recall": 0.8925619834710744,
+      "specificity": 0.8222222222222222,
+      "fp_rate": 0.17777777777777778,
+      "fn_rate": 0.10743801652892562
+    },
+    "grade_disagreements_hidden_by_binary_collapse": 28,
+    "confusion_order": [
+      "non-neoplastic",
+      "low-grade",
+      "high-grade"
+    ],
+    "confusion_rows_reference_columns_reader": [
+      [
+        37,
+        8,
+        0
+      ],
+      [
+        12,
+        49,
+        5
+      ],
+      [
+        1,
+        23,
+        31
+      ]
+    ],
+    "reference_counts": {
+      "non-neoplastic": 45,
+      "low-grade": 66,
+      "high-grade": 55
+    }
+  },
+  "same_180_slides_descriptive_comparison": {
+    "muhammad.aslam": {
+      "n": 180,
+      "three_class_correct": 123,
+      "three_class_accuracy": 0.6833333333333333,
+      "binary_correct": 156,
+      "binary": {
+        "n": 180,
+        "tp": 117,
+        "fp": 11,
+        "fn": 13,
+        "tn": 39,
+        "accuracy": 0.8666666666666667,
+        "precision": 0.9140625,
+        "recall": 0.9,
+        "specificity": 0.78,
+        "fp_rate": 0.22,
+        "fn_rate": 0.1
+      },
+      "grade_disagreements_hidden_by_binary_collapse": 33,
+      "confusion_order": [
+        "non-neoplastic",
+        "low-grade",
+        "high-grade"
+      ],
+      "confusion_rows_reference_columns_reader": [
+        [
+          39,
+          11,
+          0
+        ],
+        [
+          13,
+          55,
+          2
+        ],
+        [
+          0,
+          31,
+          29
+        ]
+      ],
+      "reference_counts": {
+        "non-neoplastic": 50,
+        "low-grade": 70,
+        "high-grade": 60
+      }
+    },
+    "ashish.bansal": {
+      "n": 180,
+      "three_class_correct": 128,
+      "three_class_accuracy": 0.7111111111111111,
+      "binary_correct": 158,
+      "binary": {
+        "n": 180,
+        "tp": 115,
+        "fp": 7,
+        "fn": 15,
+        "tn": 43,
+        "accuracy": 0.8777777777777778,
+        "precision": 0.9426229508196722,
+        "recall": 0.8846153846153846,
+        "specificity": 0.86,
+        "fp_rate": 0.14,
+        "fn_rate": 0.11538461538461539
+      },
+      "grade_disagreements_hidden_by_binary_collapse": 30,
+      "confusion_order": [
+        "non-neoplastic",
+        "low-grade",
+        "high-grade"
+      ],
+      "confusion_rows_reference_columns_reader": [
+        [
+          43,
+          7,
+          0
+        ],
+        [
+          15,
+          54,
+          1
+        ],
+        [
+          0,
+          29,
+          31
+        ]
+      ],
+      "reference_counts": {
+        "non-neoplastic": 50,
+        "low-grade": 70,
+        "high-grade": 60
+      }
+    },
+    "iftikhar.rana": {
+      "n": 180,
+      "three_class_correct": 126,
+      "three_class_accuracy": 0.7,
+      "binary_correct": 157,
+      "binary": {
+        "n": 180,
+        "tp": 117,
+        "fp": 10,
+        "fn": 13,
+        "tn": 40,
+        "accuracy": 0.8722222222222222,
+        "precision": 0.9212598425196851,
+        "recall": 0.9,
+        "specificity": 0.8,
+        "fp_rate": 0.2,
+        "fn_rate": 0.1
+      },
+      "grade_disagreements_hidden_by_binary_collapse": 31,
+      "confusion_order": [
+        "non-neoplastic",
+        "low-grade",
+        "high-grade"
+      ],
+      "confusion_rows_reference_columns_reader": [
+        [
+          40,
+          10,
+          0
+        ],
+        [
+          12,
+          53,
+          5
+        ],
+        [
+          1,
+          26,
+          33
+        ]
+      ],
+      "reference_counts": {
+        "non-neoplastic": 50,
+        "low-grade": 70,
+        "high-grade": 60
+      }
+    }
+  },
+  "validation": [
+    "muhammad.aslam: saved Q1 binary counts/rates and three-class accuracy match",
+    "ashish.bansal: saved Q1 binary counts/rates and three-class accuracy match"
+  ],
+  "limits": [
+    "Reference-label agreement does not establish clinical truth or the reason for a disagreement.",
+    "Binary labels combine low-grade and high-grade; this is a study coding convention, not a separately validated clinical cancer endpoint.",
+    "Rana's results describe only his labelled subset; no estimate is imputed for the remaining 70 slides.",
+    "The same-180 comparison equalizes slide membership but does not create a third complete reader or establish a general reader ranking.",
+    "There are only two complete readers; shared slides and unresolved patient grouping limit independent-population inference.",
+    "The strict sensitivity uses a different subset and cannot by itself attribute a difference to fallback-label quality."
+  ],
+  "code_sha256": "61bd3a90af106f6b7bc5455537bdf9335559510f9a7cd5862c64864805a1cb86"
+}

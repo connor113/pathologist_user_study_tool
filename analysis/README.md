@@ -1,3 +1,9 @@
+---
+updated: 2026-09-04
+---
+
+> **Current status:** September 4 reproduction passed all anchors, regenerated 15 figures and matched the saved results. The authoritative event count is **20,659**. Read [the dated audit](reports/2026-09-04-reproduction-and-comparison-audit.md) before interpreting historical hypotheses or planning human-AdaZoom comparison. Q7 and human-derived model work remain pending.
+
 # Pathologist viewing-behaviour analysis
 
 Exploratory analysis of the two complete readers (`muhammad.aslam`, `ashish.bansal`, 250
@@ -9,7 +15,7 @@ slides each) from the study event log, for the Project-B (AdaZoom-MIL extension)
 ## Layout
 
 ```
-data/      committed event export (pathology_events_2026-06-29.csv)
+data/      local ignored event export (pathology_events_2026-06-29.csv)
 src/       load.py · labels.py · navigation.py · metrics.py · figures.py · saliency.py
 notebooks/ pathologist_insights.py  (jupytext source) + .ipynb (executed)
 figures/   01..15 PNGs
